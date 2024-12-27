@@ -1,0 +1,17 @@
+
+.overlay {
+    position: absolute; /* 定位到容器的绝对位置 */
+    top: 20px;           /* 离顶部 20px */
+    left: 20px;          /* 离左边 20px */
+    width: 200px;        /* 设置宽度 */
+    height: 100px;       /* 设置高度 */
+    background-color: rgba(0, 0, 0, 0.7); /* 半透明的黑色背景 */
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 16px;
+    z-index: 10;         /* 确保浮层在 App 之上 */
+  }
+  
+  

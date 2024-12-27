@@ -1,0 +1,26 @@
+.measureTool {
+    position: absolute;
+    top: 20px;
+    left: 0;
+    color: #ffffff;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 9999;
+  }
+  
+  .measureItem {
+    padding: 5px;
+    background-color: #333;
+    color: white;
+    cursor: pointer;
+    border: 1px solid #fff;
+    margin-bottom: 5px;
+  }
+  
+  .measureItem:hover {
+    background-color: #555;
+  }
+  
+  .selItembox1 {
+    background-color: #ff8c00 !important;
+  }
+  
