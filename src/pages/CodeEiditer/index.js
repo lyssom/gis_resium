@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as Cesium from "cesium";
-import { Viewer } from "resium";
+import { Viewer,Entity } from "resium";
 import { Editor } from "@monaco-editor/react";
 import { MenuUnfoldOutlined } from '@ant-design/icons';
 import { Button, Drawer, FloatButton, List, Typography, Flex, Splitter, Modal, Checkbox } from 'antd';
@@ -28,7 +28,8 @@ const Desc = (props) => (
 
 
 const CesiumApp = () => {
-  const viewerRef = useRef(null);
+  let viewer
+  // const viewerRef = useRef(null);
   const [code, setCode] = useState(`// 编辑代码
   `);
   const [visible, setVisible] = useState(false);
@@ -43,8 +44,6 @@ const CesiumApp = () => {
   const [checkedList, setCheckedList] = useState(defaultCheckedList);
   const checkAll = plainOptions.length === checkedList.length;
   const indeterminate = checkedList.length > 0 && checkedList.length < plainOptions.length;
-
-  const viewer = viewerRef.current.cesiumElement;
 
   const onChange = (list) => {
     setCheckedList(list);
@@ -69,6 +68,7 @@ const CesiumApp = () => {
   
   const runCode = () => {
     try {
+      // const viewer = viewerRef.current.cesiumElement;
       const userFunction = new Function("viewer", "Cesium", code);
       userFunction(viewer, Cesium);
     } catch (error) {
@@ -112,8 +112,28 @@ const CesiumApp = () => {
     // <Button type="primary" onClick={handlegroundMeasure}>地表距离</Button>,
   ];
 
+  async function loadTileset() {
+    try {
+      console.log("1111yyyy")
+        const tileset = await Cesium.Cesium3DTileset.fromUrl(
+            'http://127.0.0.1:8000/sht/tileset.json'
+        );
+        console.log("Tileset loaded:", tileset);
+        viewer.scene.primitives.add(tileset);
+        viewer.zoomTo(tileset)
+    } catch (error) {
+        console.error("Failed to load tileset:", error);
+    }
+  }
+  // loadTileset()
+
+  const terrainProvider = Cesium.CesiumTerrainProvider.fromUrl(
+    'http://localhost:8000//tiles'
+  )
 
 
+  // const terrainProvider = new Cesium.createWorldTerrainAsync({
+  // })
 
   return (
   <Flex gap="middle" vertical>
@@ -140,7 +160,18 @@ const CesiumApp = () => {
     </Splitter.Panel>
     <Splitter.Panel collapsible min="20%">
       <div style={{width: '100%', height: '100vh', position: 'relative',}}>
-        <Viewer full style={{width: '100%', height: '100%',}} ref={viewerRef}/>
+        <Viewer 
+        full 
+        style={{width: '100%', height: '100%',}} 
+        ref={e => {viewer = e && e.cesiumElement;}}
+        terrainProvider={terrainProvider}
+        >
+        <Entity
+          position={Cesium.Cartesian3.fromDegrees(114.30, 30.59, 100)}
+          name="武汉"
+          point={{ pixelSize: 10 }}
+        />
+        </Viewer>
       </div>
 
       <div onMouseEnter={showDrawer}> <FloatButton shape="square" type="primary"style={{insetInlineEnd: 24,}}icon={<MenuUnfoldOutlined />}/></div>
