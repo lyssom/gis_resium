@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as Cesium from "cesium";
-import { Viewer,Entity } from "resium";
+import { Viewer,Entity,ImageryLayer } from "resium";
 import { Editor } from "@monaco-editor/react";
 import { MenuUnfoldOutlined } from '@ant-design/icons';
 import { Button, Drawer, FloatButton, List, Typography, Flex, Splitter, Modal, Checkbox } from 'antd';
@@ -127,12 +127,20 @@ const CesiumApp = () => {
   }
   // loadTileset()
 
-  const terrainProvider = Cesium.CesiumTerrainProvider.fromUrl(
-    'http://localhost:8000//tiles'
-  )
+  // const terrainProvider = Cesium.CesiumTerrainProvider.fromUrl(
+  //   'http://localhost:8000/tiles'
+  // )
+
+  // Cesium.Cartesian3.DEBUG_SHOW_DEPTH = true;
+  // Cesium.Cartesian3.DEBUG_SHOW_BOUNDING_VOLUME = true;
 
 
-  // const terrainProvider = new Cesium.createWorldTerrainAsync({
+  const terrainProvider = new Cesium.createWorldTerrainAsync({
+  })
+
+  // const imp = new Cesium.UrlTemplateImageryProvider({
+  //   url: 'http://localhost:8000/all/{z}/{x}/{y}.jpg',
+  //   // maximumLevel: 7,
   // })
 
   return (
@@ -165,12 +173,15 @@ const CesiumApp = () => {
         style={{width: '100%', height: '100%',}} 
         ref={e => {viewer = e && e.cesiumElement;}}
         terrainProvider={terrainProvider}
+        // imageryProvider = {false}
+        // baseLayerPicker = {false}
         >
         <Entity
           position={Cesium.Cartesian3.fromDegrees(114.30, 30.59, 100)}
           name="武汉"
           point={{ pixelSize: 10 }}
         />
+        {/* <ImageryLayer imageryProvider={imp} /> */}
         </Viewer>
       </div>
 
