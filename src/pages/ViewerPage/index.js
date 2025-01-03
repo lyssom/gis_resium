@@ -1,10 +1,13 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, use } from "react";
 import * as Cesium from "cesium";
 import { Col, InputNumber, Row, Slider, Space } from 'antd';
 
 import { Editor } from "@monaco-editor/react";
 import { MenuUnfoldOutlined } from '@ant-design/icons';
-import { Button, Drawer, FloatButton, List, Typography, Flex, Splitter, Modal, Checkbox, Switch, Divider } from 'antd';
+import { Button, Drawer, FloatButton, List, Typography, Flex, Splitter, Modal, Checkbox, Switch, Divider, Collapse } from 'antd';
+import { AimOutlined, DeleteOutlined } from '@ant-design/icons';
+import "./index.css"
+import excavateTerrain from "./excavateTerrain.js"
 
 const ViewerPage = () => {
   const [code, setCode] = useState(`// 编辑代码
@@ -17,11 +20,18 @@ const ViewerPage = () => {
   const [visible, setVisible] = useState(false);
   const [divPosition, setDivPosition] = useState('0px');
 
+  const [tiananmenValue, setTiananmenValue] = useState(false);
+  const [layers, setLayers] = useState([])
+
   const CheckboxGroup = Checkbox.Group
   const plainOptions = ['代码', '实体'];
   const defaultCheckedList = ['代码', '实体'];
 
   const [checkedList, setCheckedList] = useState(defaultCheckedList);
+  const [allEntities, setAllEntities] = useState([]);
+
+  const [entitiesList, setEntitiesList] = useState([]);
+  const [entities, setEntities] = useState([]);
   const checkAll = plainOptions.length === checkedList.length;
   const indeterminate = checkedList.length > 0 && checkedList.length < plainOptions.length;
 
@@ -58,15 +68,212 @@ const ViewerPage = () => {
     setEiditerSize('50%');
   };
 
+
+  const handleTiananmen = () => {
+    setTiananmenValue(!tiananmenValue);
+  };
+
+  const fly2Tiananmen = () => {
+
+    const rectangle = Cesium.Rectangle.fromDegrees(
+      116.3836, // west
+      39.9055,  // south
+      116.39, // east
+      39.91
+    );
+
+    viewer.current.camera.flyTo({
+      destination: rectangle,
+      duration: 2.0, // 飞行持续时间（秒）
+      orientation: {
+          heading: Cesium.Math.toRadians(0.0), // 朝向
+          pitch: Cesium.Math.toRadians(-45.0), // 俯仰角
+          roll: 0.0
+      }
+  });
+  }
+
+  const handleDeleteEntitiy = (id) => { // 删除实体 
+    viewer.current.entities.removeById(id);
+  };
+
+  console.log('entities:', entities);
+  console.log(666);
     const dataload_tool = [
+      <div>
+        <Divider>图层</Divider>
+        <div class="container">
+          <div><Checkbox defaultChecked={false} onChange={handleTiananmen}/><Divider type="vertical"/>天安门</div>
+          <div><Button type="default" size="small" icon={<AimOutlined />} onClick={fly2Tiananmen}></Button></div>
+        </div>
+        <Divider>实体</Divider>
+        <List
+      dataSource={entities}
+      renderItem={(item, index) => (
+        <List.Item>
+          <Typography.Text mark></Typography.Text>  {item._name ? item._name : 'layer_' + index}
+          <Button
+            type="text"
+            icon={<DeleteOutlined />}
+            onClick={() => handleDeleteEntitiy(item.id)} // 删除按钮点击事件
+            style={{ marginLeft: 'auto' }} // 确保按钮在右侧
+          />
+        </List.Item>
+      )}
+    />
+      </div>
+      
+      // <Button type="primary" icon={<AimOutlined />} onClick={fly2Tiananmen}></Button>,
       // <Button type="primary" onClick={handleTiles3D}>3Dtiles</Button>,
       // <Button type="primary" onClick={handleTif}>地势Tif</Button>,
       // <Button type="primary" onClick={handleTer}>高光谱融合图</Button>,
     ];
+
+    const addMarkPoint = () => {
+      var handler = new Cesium.ScreenSpaceEventHandler(viewer.current.scene.canvas);
+      let eventType= Cesium.ScreenSpaceEventType.LEFT_CLICK
+      function addPoint(screenPosition) {
+          console.log(112)
+          const { scene } = viewer.current;
+          const ellipsoid = scene.globe.ellipsoid;
+          const cartesian = viewer.current.camera.pickEllipsoid(screenPosition, ellipsoid);
+          const cartographic = ellipsoid.cartesianToCartographic(cartesian);
+          const longitude = Cesium.Math.toDegrees(cartographic.longitude);
+          const latitude = Cesium.Math.toDegrees(cartographic.latitude);
+          console.log(1123)
+          const point = new Cesium.Entity({
+              position: Cesium.Cartesian3.fromDegrees(longitude, latitude, 2000),
+              point: {
+                  pixelSize: 10,
+                  color: Cesium.Color.RED,
+                  outlineColor: Cesium.Color.WHITE,
+                  outlineWidth: 2,
+              },
+          });
+          viewer.current.entities.add(point)
+          console.log(viewer.current.entities._entities)
+      }
+
+      handler.setInputAction(event=>{
+          // console.log(event.position);
+          addPoint(event.position)
+      }, eventType);
+    }
+
+    const markTool = [
+      <Button type="primary" 
+      // icon={<AimOutlined />} 
+      onClick={addMarkPoint}
+      >标记点</Button>,
+    ];
+
+    const initTP = async() => {
+      const wterrainProvider = await Cesium.createWorldTerrainAsync()
+      viewer.current.terrainProvider = wterrainProvider;
+    }
+
+    const handlExcavate = () => {
+      viewer.current.scene.globe.depthTestAgainstTerrain = true;
+      initTP();
+
+    const scene = viewer.current.scene;
+    const handler = new Cesium.ScreenSpaceEventHandler(scene.canvas);
+
+    // 用于存储点击的坐标
+    let firstClickPosition = null;
+    let rectangleEntity = null;
+
+    handler.setInputAction((click) => {
+        const ray = viewer.current.camera.getPickRay(click.position);
+        const position = viewer.current.scene.globe.pick(ray, scene);
+
+        // 确保点击的位置有效
+        if (Cesium.defined(position)) {
+            if (!firstClickPosition) {
+                firstClickPosition = position;
+            } else {
+                const rectangleCoordinates = Cesium.Rectangle.fromCartographicArray([
+                    Cesium.Cartographic.fromCartesian(firstClickPosition),
+                    Cesium.Cartographic.fromCartesian(position)
+                ]);
+
+                if (rectangleEntity) {
+                  viewer.current.entities.remove(rectangleEntity);
+                }
+
+                rectangleEntity = viewer.current.entities.add({
+                    rectangle: {
+                        coordinates: rectangleCoordinates,
+                        material: Cesium.Color.RED.withAlpha(0.5),
+                        outline: true,
+                        outlineColor: Cesium.Color.BLACK
+                    }
+                });
+
+                // 输出矩形四个角的XYZ坐标
+                const west = rectangleCoordinates.west;
+                const south = rectangleCoordinates.south;
+                const east = rectangleCoordinates.east;
+                const north = rectangleCoordinates.north;
+
+                // 计算四个角的Cartographic坐标（经纬度）
+                const southwest = new Cesium.Cartographic(west, south);
+                const southeast = new Cesium.Cartographic(east, south);
+                const northeast = new Cesium.Cartographic(east, north);
+                const northwest = new Cesium.Cartographic(west, north);
+
+                // 将Cartographic转换为Cartesian3
+                const southwestCartesian = viewer.current.scene.globe.ellipsoid.cartographicToCartesian(southwest);
+                const southeastCartesian = viewer.current.scene.globe.ellipsoid.cartographicToCartesian(southeast);
+                const northeastCartesian = viewer.current.scene.globe.ellipsoid.cartographicToCartesian(northeast);
+                const northwestCartesian = viewer.current.scene.globe.ellipsoid.cartographicToCartesian(northwest);
+
+                // 输出四个角的XYZ坐标
+                console.log("Southwest corner (XYZ):", southwestCartesian);
+                console.log("Southeast corner (XYZ):", southeastCartesian);
+                console.log("Northeast corner (XYZ):", northeastCartesian);
+                console.log("Northwest corner (XYZ):", northwestCartesian);
+
+                firstClickPosition = null;
+
+                var mr = [{
+                    x: southwestCartesian.x,
+                    y: southwestCartesian.y,
+                    z: southwestCartesian.z
+                },
+                {
+                    x: southeastCartesian.x,
+                    y: southeastCartesian.y,
+                    z: southeastCartesian.z
+                },
+                {
+                    x: northeastCartesian.x,
+                    y: northeastCartesian.y,
+                    z: northeastCartesian.z
+                },
+                {
+                    x: northwestCartesian.x,
+                    y: northwestCartesian.y,
+                    z: northwestCartesian.z
+                }
+                ];
+                    new excavateTerrain(viewer.current, {
+        positions: mr,
+        height: 30,
+        bottom: "/ter_analysis/excavationregion_side.jpg",
+        side: "/ter_analysis/excavationregion_top.jpg",
+    })
+            }
+        } else {
+            console.error("Invalid position detected!");
+        }
+    }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+    }
   
     const measure_tool = [
       // <Button type="primary" onClick={handleMeasure}>空间距离</Button>,
       // <Button type="primary" onClick={handlegroundMeasure}>地表距离</Button>,
+      <Button type="primary" onClick={handlExcavate}>地形开挖</Button>,
     ];
   
     const highLevelTool = [
@@ -80,6 +287,7 @@ const ViewerPage = () => {
           <Slider
             min={1}
             max={10}
+            style={{ margin: '16px 16px' }}
             onChange={onExaggerChange}
             value={inputValue}
           />
@@ -88,7 +296,7 @@ const ViewerPage = () => {
           <InputNumber
             min={1}
             max={10}
-            style={{ margin: '0 16px' }}
+            style={{ margin: '8px 24px' }}
             value={inputValue}
             onChange={onExaggerChange}
           />
@@ -116,18 +324,31 @@ const ViewerPage = () => {
     setIsModalOpen(true);
   };
 
+  useEffect(() => {
+    if (entities.length > 0) {
+      console.log("Entities have been updated:", entities);
+      // 你可以在这里触发任何必要的更新或刷新操作
+      // 例如更新其他组件状态、重新渲染等
+    }
+  }, [entities]); // 监听entities的变化
 
   useEffect(() => {
     // 创建 Viewer 实例
     const viewerInstance = new Cesium.Viewer(viewerRef.current, {
-        terrain: new Cesium.Terrain(Cesium.CesiumTerrainProvider.fromUrl(
-          // "http://data.mars3d.cn/terrain/"
-          "http://localhost:8000/tiles"
-          ))
+        // terrain: new Cesium.Terrain(Cesium.CesiumTerrainProvider.fromUrl(
+        //   // "http://data.mars3d.cn/terrain/"
+        //   "http://localhost:8000/tiles"
+        //   ))
     });
+    
     // console.log('terrainProvider:', viewerInstance.scene.terrainProvider);
-    viewer.current = viewerInstance; // 保存 Viewer 实例
-    viewerInstance.scene.verticalExaggeration = inputValue;
+    viewer.current = viewerInstance;
+      // 获取所有实体并存储在state中
+    const updateEntities = () => {
+      setEntities(viewerInstance.entities.values);
+    };
+    const entitiesChangedListener = viewerInstance.entities.collectionChanged.addEventListener(updateEntities);
+    // viewerInstance.scene.verticalExaggeration = inputValue;
     
     viewerInstance.entities.add({
       name: '丰润区中心点',
@@ -139,6 +360,7 @@ const ViewerPage = () => {
     });
 
     return () => {
+      entitiesChangedListener();
       viewerInstance.destroy();
     };
   }, []);
@@ -150,15 +372,118 @@ const ViewerPage = () => {
     }
   }, [inputValue]);
 
+  const addImageryLayer = (layerId, provider) => {
+    if (provider && viewer.current) {
+      const imageryLayer = viewer.current.imageryLayers.addImageryProvider(provider);
+      imageryLayer.id = layerId;
+      setLayers((prevLayers) => [...prevLayers, { id: 'layer_tam', layer: imageryLayer }]);
+    }
+  }
+
+  const removeImageryLayer = (layerId) => {
+    if (viewer.current) {
+      console.log(viewer.current.imageryLayers)
+      const layerToRemove = layers.find((layer) => layer.id === layerId);
+      if (layerToRemove) {
+        const removed = viewer.current.imageryLayers.remove(layerToRemove.layer);
+        setLayers((prevLayers) => prevLayers.filter((layer) => layer.id !== layerId));
+      }
+    }
+  }
+
+
+  useEffect(() => {
+    if (viewer.current && tiananmenValue) {
+
+      const rectangle = Cesium.Rectangle.fromDegrees(
+        116.3836, // west
+        39.9055,  // south
+        116.39, // east
+        39.91
+      );
+      const imageryProv =  new Cesium.TileMapServiceImageryProvider({
+        url: 'http://localhost:8000/tiananmen/{z}/{x}/{y}.png',
+        tilingScheme: new Cesium.WebMercatorTilingScheme(),
+        fileExtension: "png",
+        rectangle:rectangle,
+        minimumLevel: 16,
+        // maximumLevel: 22,
+      })
+
+      addImageryLayer('layer_tam', imageryProv);
+    }
+  }, [tiananmenValue]);
+
+  useEffect(() => {
+    if (viewer.current && !tiananmenValue) {
+      removeImageryLayer('layer_tam');
+    }
+  }, [tiananmenValue]);
+
   const runCode = () => {
     try {
-      // const viewer = viewerRef.current.cesiumElement;
+      const cviewer = viewer.current;
       const userFunction = new Function("viewer", "Cesium", code);
-      userFunction(viewer, Cesium);
+      userFunction(cviewer, Cesium);
     } catch (error) {
       alert("代码运行错误：" + error.message);
     }
   };
+
+  const dataload_obj = [
+    {
+      key: '1',
+      label: '图层',
+      children: <List
+      // header={<div>数据加载</div>}
+      dataSource={dataload_tool}
+      renderItem={(item) => (
+        <List.Item>
+          <Typography.Text mark></Typography.Text> {item}
+        </List.Item>
+      )}
+    />,
+    },
+    {
+      key: '2',
+      label: '分析量算',
+      children: <List
+      // header={<div>数据加载</div>}
+      dataSource={measure_tool}
+      renderItem={(item) => (
+        <List.Item>
+          <Typography.Text mark></Typography.Text> {item}
+        </List.Item>
+      )}
+    />,
+    },
+    {
+      key: '3',
+      label: '标记工具',
+      children: <List
+      // header={<div>数据加载</div>}
+      dataSource={markTool}
+      renderItem={(item) => (
+        <List.Item>
+          <Typography.Text mark></Typography.Text> {item}
+        </List.Item>
+      )}
+    />,
+    },
+    {
+      key: '4',
+      label: '高级设置',
+      children:       <List
+      // header={<div>高级设置</div>}
+      dataSource={highLevelTool}
+      renderItem={(item) => (
+        <List.Item>
+          <Typography.Text mark></Typography.Text> {item}
+        </List.Item>
+      )}
+    />,
+    },
+  ];
 
 
   return (
@@ -203,33 +528,7 @@ const ViewerPage = () => {
         open={visible}
         onMouseLeave={onClose}
       >
-      <List
-        header={<div>数据加载</div>}
-        dataSource={dataload_tool}
-        renderItem={(item) => (
-          <List.Item>
-            <Typography.Text mark></Typography.Text> {item}
-          </List.Item>
-        )}
-      />
-      <List
-        header={<div>量算工具</div>}
-        dataSource={measure_tool}
-        renderItem={(item) => (
-          <List.Item>
-            <Typography.Text mark></Typography.Text> {item}
-          </List.Item>
-        )}
-      />
-      <List
-        header={<div>高级设置</div>}
-        dataSource={highLevelTool}
-        renderItem={(item) => (
-          <List.Item>
-            <Typography.Text mark></Typography.Text> {item}
-          </List.Item>
-        )}
-      />
+      <Collapse items={dataload_obj} defaultActiveKey={['1', '2', '3']}/>
       </Drawer>
       
     </Splitter.Panel>
