@@ -198,8 +198,6 @@ const ViewerPage = () => {
     console.log(e.target.value);
     setSelectedTerrainId(e.target.value.id);
     let tpurl
-    console.log(666666)
-    console.log(e.target.value)
     if (e.target.value.data_name=='全局地形') {
       initTP();
     } else {
@@ -239,35 +237,35 @@ const ViewerPage = () => {
   const dataload_tool = [
       <div>
         <Divider>地形</Divider>
-
-        <List
-        dataSource={terrainList}
-        split={false}
-        renderItem={(item, index) => (
-          <div className="container">
-        <List.Item style={{ padding: 0 }} key={index}>
-          <Radio.Group>
-            <Radio 
+        <Radio.Group>
+  <List
+    dataSource={terrainList}
+    split={false}
+    renderItem={(item) => (
+      <div className="container">
+        <List.Item style={{ padding: 0 }} key={item.id}>
+          <Radio
             value={item}
             checked={selectedTerrainId === item.id}
             onChange={handleSelectTerrainChange}
-            ></Radio>
-          </Radio.Group>
-          {item.data_name} 
-        </List.Item> 
+          />
+          {item.data_name}
+        </List.Item>
         {item.lon && item.lat && (
-          <div>
-            <Button 
-              type="default" 
-              size="small" 
-              icon={<AimOutlined />} 
-              onClick={() =>fly2Loc(item.lon, item.lat, item.alt)}
+          <div style={{ marginLeft: '160px' }}>
+            <Button
+              type="default"
+              size="small"
+              icon={<AimOutlined />}
+              onClick={() => fly2Loc(item.lon, item.lat, item.alt)}
             />
           </div>
         )}
-        </div>
-        )}
-        />
+      </div>
+    )}
+  />
+</Radio.Group>
+
         <Divider>图层</Divider>
         {tilesList.length > 0 && (<List
         dataSource={tilesList}
@@ -618,14 +616,14 @@ const ViewerPage = () => {
         initTP();
 
         var handler = new Cesium.ScreenSpaceEventHandler(viewer.current.canvas);
-        viewer.current.camera.setView({
-          destination: Cesium.Cartesian3.fromDegrees(98.685331, 27.780325, 7318.6),
-          orientation: {
-              heading: Cesium.Math.toRadians(73),
-              pitch: Cesium.Math.toRadians(-52.2),
-              roll: 0.0
-          }
-      });
+      //   viewer.current.camera.setView({
+      //     destination: Cesium.Cartesian3.fromDegrees(98.685331, 27.780325, 7318.6),
+      //     orientation: {
+      //         heading: Cesium.Math.toRadians(73),
+      //         pitch: Cesium.Math.toRadians(-52.2),
+      //         roll: 0.0
+      //     }
+      // });
 
         handler.setInputAction(function (click) {
             var windowPosition = click.position;
@@ -975,6 +973,9 @@ const ViewerPage = () => {
         url:layer.layer.imageryProvider.url,
       });
     }
+
+    console.log(imageriesData)
+    console.log(11122);
 
     const jsonOutput = JSON.stringify(
       {"imagery":imageriesData, "entities":entitiesData},
