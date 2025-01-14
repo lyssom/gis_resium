@@ -52,3 +52,11 @@ export const saveImageData = (data) => {
         data
     })
 }
+
+export const getExcavateResource = (params) => {
+    return axios.request({
+        url: '/get_excavate_resource',
+        method: 'get',
+        params
+    })
+}

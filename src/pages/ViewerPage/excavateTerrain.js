@@ -204,7 +204,7 @@ class excavateTerrain {
                         minimumHeights: minimumHeights,
                         material: new Cesium.ImageMaterialProperty({
                             image: config.side,
-                            repeat: new Cesium.Cartesian2(30, 30),
+                            repeat: new Cesium.Cartesian2(30, 1),
                         }),
                     },
                 });
@@ -223,7 +223,7 @@ class excavateTerrain {
                     minimumHeights: minimumHeights,
                     material: new Cesium.ImageMaterialProperty({
                         image: config.side,
-                        repeat: new Cesium.Cartesian2(30, 30),
+                        repeat: new Cesium.Cartesian2(30, 1),
                     }),
                 },
             });

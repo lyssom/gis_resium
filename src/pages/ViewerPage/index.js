@@ -10,11 +10,12 @@ import "./index.css"
 import excavateTerrain from "./excavateTerrain.js"
 import {load, clears } from "./line_of_sight.js"
 import { message } from 'antd';
+import CesiumPlot from 'cesium-plot-js';
 
-import {measureLineSpace, measureGroundDistance} from "./measureTool.js"
+import {measureLineSpace, measureGroundDistance, measureAreaSpace, altitude} from "./measureTool.js"
 
 
-import {getSceneDetail, saveSceneDetail, getSceneList, getImageDatas, saveImageData} from '../../api/index.js'
+import {getSceneDetail, saveSceneDetail, getSceneList, getImageDatas, saveImageData, getExcavateResource} from '../../api/index.js'
 
 const ViewerPage = () => {
   const [code, setCode] = useState(`// 编辑代码
@@ -25,6 +26,8 @@ const ViewerPage = () => {
   const viewer = useRef(null); 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isModalImportOpen, setIsModalImportOpen] = useState(false);
+  const [mr, setmr] = useState([]);
+  const [isModalExcavateOpen, setIsModalExcavateOpen] = useState(false);
   const [isModalImportDataOpen, setIsModalImportDataOpen] = useState(false);
   const [isModalLocationOpen, setIsModalLocationOpen] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -56,6 +59,8 @@ const ViewerPage = () => {
   const [selectedTerrainId, setSelectedTerrainId] = useState(null)
   const [exportSenceName, setExportSenceName] = useState('')
 
+  const [excavateHight, setExcavateHight] = useState(0)
+
   const [coordinates, setCoordinates] = useState({
     longitude: '',
     latitude: '',
@@ -78,14 +83,15 @@ const ViewerPage = () => {
     });
   };
 
+  const handleExcavateHightChange = (e) => {
+    setExcavateHight(e.target.value)
+  }
+
   const handleImportDataChange = (e) => {
     setimportDataCoordinates({
       ...importDatacoordinates,
       [e.target.name]: e.target.value
     });
-    console.log(e.target.name)
-    console.log(e.target.value)
-    console.log(importDatacoordinates.dataName)
   };
 
   const handleImportDataChangeDataType = (e) => {
@@ -110,7 +116,6 @@ const ViewerPage = () => {
   };
 
   const onEditerChange = (checked) => {
-    console.log(`switch to ${checked}`);
     if (checked) {
       setEiditerSize('50%');
     } else {
@@ -195,7 +200,6 @@ const ViewerPage = () => {
   }, []); // 监听entities的变化
 
   const handleSelectTerrainChange = (e) => {
-    console.log(e.target.value);
     setSelectedTerrainId(e.target.value.id);
     let tpurl
     if (e.target.value.data_name=='全局地形') {
@@ -204,7 +208,6 @@ const ViewerPage = () => {
       terrainList.forEach(item => {
         if (item.id == e.target.value.id) {
           tpurl = item.data_url;
-          console.log(tpurl);
         }
       })
       initCustomTP(tpurl);
@@ -212,7 +215,6 @@ const ViewerPage = () => {
   }
 
   const fly2Loc = (lon, lat, alt) => {
-    console.log(alt)
     if (isNaN(alt) || alt < 0 || alt == '' || alt == null) {
       alt = 100000
     }
@@ -226,12 +228,17 @@ const ViewerPage = () => {
     }
   }
 
-  const loadWMS = (url) => {
-    const imageryProv =  new Cesium.TileMapServiceImageryProvider({
-      url
-    })
-
-    addImageryLayer('layer_tam', imageryProv, '天安门');
+  const loadWMS = (tile) => {
+    const layerRes = layers.find((layer) => layer.id === tile.id);
+    if (layerRes) {
+      removeImageryLayer(tile.id);
+    } else {
+      const imageryProv =  new Cesium.TileMapServiceImageryProvider({
+        url: tile.data_url,
+      })
+  
+      addImageryLayer(tile.id, imageryProv, tile.data_name);
+    }
   }
 
   const dataload_tool = [
@@ -273,7 +280,7 @@ const ViewerPage = () => {
         renderItem={(item, index) => (
           <div className="container">
         <List.Item style={{ padding: 0 }} key={index}>
-        <Checkbox defaultChecked={false} onChange={() =>loadTileset(item.data_url)}/><Divider type="vertical"/>
+        <Checkbox defaultChecked={false} onChange={() =>loadTileset(item)}/><Divider type="vertical"/>
           {item.data_name} 
         </List.Item> 
         {item.lon && item.lat && (
@@ -295,7 +302,7 @@ const ViewerPage = () => {
         renderItem={(item, index) => (
           <div className="container">
         <List.Item style={{ padding: 0 }} key={index}>
-        <Checkbox defaultChecked={false} onChange={() =>loadWMS(item.data_url)}/><Divider type="vertical"/>
+        <Checkbox defaultChecked={false} onChange={() =>loadWMS(item)}/><Divider type="vertical"/>
           {item.data_name} 
         </List.Item> 
         {item.lon && item.lat && (
@@ -341,7 +348,6 @@ const ViewerPage = () => {
             },
         });
       } else if (entityType === 'billboard') {
-        console.log(666)
         ent = new Cesium.Entity({
             position: Cesium.Cartesian3.fromDegrees(longitude, latitude, 2000),
             billboard: {
@@ -359,145 +365,70 @@ const ViewerPage = () => {
 
       handler.setInputAction(event=>{
           addPoint(event.position, entityType)
+          
+          handler.removeInputAction(eventType);
       }, eventType);
-
-      const cancelEventType = Cesium.ScreenSpaceEventType.RIGHT_CLICK;
-      handler.setInputAction(() => {
-        handler.removeInputAction(eventType);
-        console.log("右键点击，取消监听");
-      }, cancelEventType);
     }
 
     const addTailShape = () => {
-      var drawnShapes = [];
-      var handler = new Cesium.ScreenSpaceEventHandler(viewer.current.scene.canvas);
-      var positions = [];
-    
-      handler.setInputAction(function (click) {
-        var ray = viewer.current.camera.getPickRay(click.position);
-        var cartesian = viewer.current.scene.globe.pick(ray, viewer.current.scene);
-    
-        if (Cesium.defined(cartesian)) {
-          positions.push(cartesian);
-    
-          const ent = viewer.current.entities.add({
-            position: cartesian,
-            point: {
-              pixelSize: 5,
-              color: Cesium.Color.RED
-            }
-          });
-          drawnShapes.push(ent);
-        }
-        if (positions.length === 2) {
-          const MathDistance = (pnt1, pnt2) => Math.sqrt((pnt1[0] - pnt2[0]) ** 2 + (pnt1[1] - pnt2[1]) ** 2);
-          const wholeDistance = (points) => {
-            let distance = 0;
-            if (points && Array.isArray(points) && points.length > 0) {
-              points.forEach((item, index) => {
-                if (index < points.length - 1) {
-                  distance += MathDistance(item, points[index + 1]);
-                }
-              });
-            }
-            return distance;
-          };
-        
-          const getBaseLength = (points) => wholeDistance(points) ** 0.99;
-        
-          const getAzimuth = (startPoint, endPoint) => {
-            let azimuth;
-            const angle = Math.asin(Math.abs(endPoint[1] - startPoint[1]) / MathDistance(startPoint, endPoint));
-            if (endPoint[1] >= startPoint[1] && endPoint[0] >= startPoint[0]) {
-              azimuth = angle + Math.PI;
-            } else if (endPoint[1] >= startPoint[1] && endPoint[0] < startPoint[0]) {
-              azimuth = Math.PI * 2 - angle;
-            } else if (endPoint[1] < startPoint[1] && endPoint[0] < startPoint[0]) {
-              azimuth = angle;
-            } else if (endPoint[1] < startPoint[1] && endPoint[0] >= startPoint[0]) {
-              azimuth = Math.PI - angle;
-            }
-            return azimuth;
-          };
-          
-        
-          const getThirdPoint = (startPnt, endPnt, angle, distance, clockWise) => {
-            const azimuth = getAzimuth(startPnt, endPnt);
-            const alpha = clockWise ? azimuth + angle : azimuth - angle;
-            const dx = distance * Math.cos(alpha);
-            const dy = distance * Math.sin(alpha);
-            return [endPnt[0] + dx, endPnt[1] + dy];
-          };
+      new CesiumPlot.FineArrow(Cesium, viewer.current);
+    }
 
-          const cartographic = Cesium.Cartographic.fromCartesian(positions[0]);
-          const p1Lon = Cesium.Math.toDegrees(cartographic.longitude); // 转换为十进制经度
-          const p1Lat = Cesium.Math.toDegrees(cartographic.latitude);
+    const addCircleShape = () => {
+      new CesiumPlot.Circle(Cesium, viewer.current);
+    }
 
-          const cartographic2 = Cesium.Cartographic.fromCartesian(positions[1]);
-          const p2Lon = Cesium.Math.toDegrees(cartographic2.longitude); // 转换为十进制经度
-          const p2Lat = Cesium.Math.toDegrees(cartographic2.latitude);
+    const addReactangleShape = () => {
+      new CesiumPlot.Reactangle(Cesium, viewer.current);
+    }
 
-          const p1 = [p1Lon, p1Lat]
-          const p2 = [p2Lon, p2Lat]
+    const addTriangleShape = () => {
+      new CesiumPlot.Triangle(Cesium, viewer.current);
+    }
 
-          const tailWidthFactor = 0.1;
-          const neckWidthFactor = 0.2;
-          const headWidthFactor = 0.25;
+    const addLuneShape = () => {
+      new CesiumPlot.Lune(Cesium, viewer.current);
+    }
 
-          const headAngle = Math.PI / 8.5;
-          const neckAngle = Math.PI / 13;
+    const addEllipseShape = () => {
+      new CesiumPlot.Ellipse(Cesium, viewer.current);
+    }
 
+    const addDoubleArrowShape = () => {
+      new CesiumPlot.DoubleArrow(Cesium, viewer.current);
+    }
 
-          const len = getBaseLength([p1, p2]);
-          const tailWidth = len * tailWidthFactor;
-          const neckWidth = len * neckWidthFactor;
-          const headWidth = len * headWidthFactor;
-          const tailLeft = getThirdPoint(p2, p1, Math.PI / 2, tailWidth, true);
-          const tailRight = getThirdPoint(p2, p1, Math.PI / 2, tailWidth, false);
-          const headLeft = getThirdPoint(p1, p2, headAngle, headWidth, false);
-          const headRight = getThirdPoint(p1, p2, headAngle, headWidth, true);
-          const neckLeft = getThirdPoint(p1, p2, neckAngle, neckWidth, false);
-          const neckRight = getThirdPoint(p1, p2, neckAngle, neckWidth, true);
-          const points = [...tailLeft, ...neckLeft, ...headLeft, ...p2, ...headRight, ...neckRight, ...tailRight, ...p1];
-          const cartesianPoints = Cesium.Cartesian3.fromDegreesArray(points);
-
-          const polygonEntity = viewer.current.entities.add({
-            polygon: new Cesium.PolygonGraphics({
-              hierarchy: cartesianPoints,
-              show: true,
-              // material: style.material,
-            }),
-          });
-          drawnShapes.push(polygonEntity);
-          positions = [];
-        }
-      }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
-
-      handler.setInputAction(function () {
-        if (drawnShapes.length > 0) {
-          for (let i = 0; i < drawnShapes.length; i++) {
-            viewer.current.entities.remove(drawnShapes[i]);
-          }
-        }
-      }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
-    };
-    
 
     const markTool = [
-      <div className="container">
+      <Space wrap="false" align="baseline">
       <Button type="primary" 
-      icon={<DeploymentUnitOutlined />} 
       onClick={() =>addEntity('point')}
       >点</Button>
       <Button type="primary" 
-      icon={<EnvironmentOutlined />} 
       onClick={() =>addEntity('billboard')}
       >标记</Button>
       <Button type="primary" 
-      icon={<EnvironmentOutlined />} 
       onClick={() =>addTailShape()}
       >燕尾图</Button>
-      </div>
+      <Button type="primary" 
+      onClick={() =>addCircleShape()}
+      >圆形</Button>
+      <Button type="primary" 
+      onClick={() =>addReactangleShape()}
+      >矩形</Button>
+      <Button type="primary" 
+      onClick={() =>addTriangleShape()}
+      >三角形</Button>
+      <Button type="primary" 
+      onClick={() =>addLuneShape()}
+      >半月面</Button>
+      <Button type="primary" 
+      onClick={() =>addEllipseShape()}
+      >椭圆</Button>
+      <Button type="primary" 
+      onClick={() =>addDoubleArrowShape()}
+      >双箭头</Button>
+      </Space>
     ];
 
     const initTP = async() => {
@@ -518,7 +449,6 @@ const ViewerPage = () => {
     const scene = viewer.current.scene;
     const handler = new Cesium.ScreenSpaceEventHandler(scene.canvas);
 
-    // 用于存储点击的坐标
     let firstClickPosition = null;
     let rectangleEntity = null;
 
@@ -526,7 +456,6 @@ const ViewerPage = () => {
         const ray = viewer.current.camera.getPickRay(click.position);
         const position = viewer.current.scene.globe.pick(ray, scene);
 
-        // 确保点击的位置有效
         if (Cesium.defined(position)) {
             if (!firstClickPosition) {
                 firstClickPosition = position;
@@ -540,41 +469,21 @@ const ViewerPage = () => {
                   viewer.current.entities.remove(rectangleEntity);
                 }
 
-                rectangleEntity = viewer.current.entities.add({
-                    rectangle: {
-                        coordinates: rectangleCoordinates,
-                        material: Cesium.Color.RED.withAlpha(0.5),
-                        outline: true,
-                        outlineColor: Cesium.Color.BLACK
-                    }
-                });
-
-                // 输出矩形四个角的XYZ坐标
                 const west = rectangleCoordinates.west;
                 const south = rectangleCoordinates.south;
                 const east = rectangleCoordinates.east;
                 const north = rectangleCoordinates.north;
+                console.log(west, south, east, north);
 
-                // 计算四个角的Cartographic坐标（经纬度）
                 const southwest = new Cesium.Cartographic(west, south);
                 const southeast = new Cesium.Cartographic(east, south);
                 const northeast = new Cesium.Cartographic(east, north);
                 const northwest = new Cesium.Cartographic(west, north);
-
-                // 将Cartographic转换为Cartesian3
                 const southwestCartesian = viewer.current.scene.globe.ellipsoid.cartographicToCartesian(southwest);
                 const southeastCartesian = viewer.current.scene.globe.ellipsoid.cartographicToCartesian(southeast);
                 const northeastCartesian = viewer.current.scene.globe.ellipsoid.cartographicToCartesian(northeast);
                 const northwestCartesian = viewer.current.scene.globe.ellipsoid.cartographicToCartesian(northwest);
-
-                // 输出四个角的XYZ坐标
-                console.log("Southwest corner (XYZ):", southwestCartesian);
-                console.log("Southeast corner (XYZ):", southeastCartesian);
-                console.log("Northeast corner (XYZ):", northeastCartesian);
-                console.log("Northwest corner (XYZ):", northwestCartesian);
-
                 firstClickPosition = null;
-
                 var mr = [{
                     x: southwestCartesian.x,
                     y: southwestCartesian.y,
@@ -596,12 +505,10 @@ const ViewerPage = () => {
                     z: northwestCartesian.z
                 }
                 ];
-                    new excavateTerrain(viewer.current, {
-        positions: mr,
-        height: 30,
-        bottom: "/ter_analysis/excavationregion_side.jpg",
-        side: "/ter_analysis/excavationregion_top.jpg",
-    })
+                setmr(mr)
+                setIsModalExcavateOpen(true);
+                handler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
             }
         } else {
             console.error("Invalid position detected!");
@@ -614,17 +521,7 @@ const ViewerPage = () => {
         var startPoint, endPoint;
         viewer.current.scene.globe.depthTestAgainstTerrain = true;
         initTP();
-
         var handler = new Cesium.ScreenSpaceEventHandler(viewer.current.canvas);
-      //   viewer.current.camera.setView({
-      //     destination: Cesium.Cartesian3.fromDegrees(98.685331, 27.780325, 7318.6),
-      //     orientation: {
-      //         heading: Cesium.Math.toRadians(73),
-      //         pitch: Cesium.Math.toRadians(-52.2),
-      //         roll: 0.0
-      //     }
-      // });
-
         handler.setInputAction(function (click) {
             var windowPosition = click.position;
             var ray = viewer.current.camera.getPickRay(windowPosition);
@@ -637,15 +534,12 @@ const ViewerPage = () => {
                 var lat = Cesium.Math.toDegrees(cartographic.latitude);
                 var height = cartographic.height;
 
-                console.log("Clicked position - Lon: " + lon + ", Lat: " + lat + ", Height: " + height);
-
                 if (!startPoint) {
                     startPoint = cartesian;
-                    console.log("Start point set to: " + lon + ", " + lat + ", " + height);
                 } else {
                     endPoint = cartesian;
-                    console.log("End point set to: " + lon + ", " + lat + ", " + height);
                     load(viewer.current, startPoint, endPoint, messageApi);
+                    handler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK);
                 }
             } else {
                 console.log("No valid position picked.");
@@ -670,14 +564,26 @@ const ViewerPage = () => {
       measureGroundDistance(viewer.current);
     }
 
+    const handleAreaMeasure = () => {
+      measureAreaSpace(viewer.current);
+    }
+
+    const handlaltitudeMeasure = () => {
+      altitude(viewer.current);
+    }
+
 
     const measure_tool = [
-      <div className='container'>
+      <Space>
       <Button onClick={handleMeasure}>空间距离</Button>
       <Button onClick={handlegroundMeasure}>地表距离</Button>
-      <Button onClick={handlExcavate}>地形开挖</Button>
-      </div>,
-      <Button onClick={handlelineofsight}>通视/遮蔽</Button>,
+      <Button onClick={handleAreaMeasure}>地表面积</Button>
+      </Space>,
+      <Space>
+        <Button onClick={handlExcavate}>地形开挖</Button>
+        <Button onClick={handlelineofsight}>通视/遮蔽</Button>
+      </Space>
+      
     ];
 
     const handleLonLat = () => {
@@ -747,14 +653,12 @@ const ViewerPage = () => {
 
       }
       viewer.current.entities.add(point)
-      console.log(viewer.current.entities._entities)
   }}
 
 
     const importScene = () => {
       getSceneDetail({'id': selectedId}).then(res => {
 
-        console.log(res)
         res.data.data['imagery'].forEach(item => {
           const imageryProv =  new Cesium.TileMapServiceImageryProvider({
             url: item.url,
@@ -773,7 +677,6 @@ const ViewerPage = () => {
 
     const handleLocationSubmit = () => {
       const { longitude, latitude, altitude } = coordinates;
-      console.log(longitude, latitude, altitude)
 
       // 将输入的经纬度转换为 Cesium 的 Cartesian3 坐标系
       const lon = parseFloat(longitude);
@@ -799,11 +702,6 @@ const ViewerPage = () => {
 
     const handleImportDataSubmit = () => {
       const { dataType, dataName, dataUrl, longitude, latitude, altitude } = importDatacoordinates;
-      console.log(longitude, latitude, altitude)
-
-      console.log(dataType, dataName, dataUrl)
-
-      // 将输入的经纬度转换为 Cesium 的 Cartesian3 坐标系
       const lon = parseFloat(longitude);
       const lat = parseFloat(latitude);
       const alt = parseFloat(altitude);
@@ -813,7 +711,6 @@ const ViewerPage = () => {
         null, 2);
 
       saveImageData({'data': JSON.parse(jsonOutput)}).then(res => {
-        console.log(res);
       })
 
       setimportDataCoordinates({
@@ -889,7 +786,6 @@ const ViewerPage = () => {
             <List
       dataSource={layers}
       renderItem={(item, index) => (
-        console.log(item),
         <List.Item key={index}>
           <Typography.Text mark></Typography.Text>  {item.layer.name ? item.layer.name : 'layer_' + index}
           <Button
@@ -919,6 +815,43 @@ const ViewerPage = () => {
     setIsModalImportOpen(false);
   }
 
+  const handleExcavateCancel = () => {
+    setIsModalExcavateOpen(false);
+  }
+
+  const handlestartExcavate = () => {
+    // setstartExcavate(true);
+    console.log(1222)
+    console.log(excavateHight)
+    console.log(122233)
+    console.log(mr)
+    handleExcavateCancel()
+
+    const centerCartesian = new Cesium.Cartesian3(
+      (mr[0].x + mr[1].x + mr[2].x + mr[3].x) / 4,
+      (mr[0].y + mr[1].y + mr[2].y + mr[3].y) / 4,
+      (mr[0].z + mr[1].z + mr[2].z + mr[3].z) / 4
+    );
+
+    const centerCartographic = viewer.current.scene.globe.ellipsoid.cartesianToCartographic(centerCartesian);
+    const centerLongitude = Cesium.Math.toDegrees(centerCartographic.longitude); // 经度
+    const centerLatitude = Cesium.Math.toDegrees(centerCartographic.latitude); // 纬度
+
+
+    getExcavateResource({'hight': excavateHight, 'lon': centerLongitude, 'lat': centerLatitude}).then(res => {
+      const { data } = res;
+      console.log(data)
+      new excavateTerrain(viewer.current, {
+        positions: mr,
+        height: excavateHight,
+        bottom: "/ter_analysis/" + data.bottom,
+        side: "/ter_analysis/" + data.side
+      })
+    })
+
+    setExcavateHight(0)
+  }
+
   const handleLocationCancel = () => {
     setIsModalLocationOpen(false);
   }
@@ -939,7 +872,6 @@ const ViewerPage = () => {
     let entityType;
     let position;
     const allEntities = viewer.current.entities.values;
-    console.log(allEntities); // 输出所有实体
     for (let i = 0; i < allEntities.length; i++) {
       const entity = allEntities[i];
 
@@ -960,10 +892,6 @@ const ViewerPage = () => {
         entity_type: entityType
       });
     }
-
-    console.log(entitiesData)
-    console.log(code);
-
     const imageriesData = [];
 
     for (let i = 0; i < layers.length; i++) {
@@ -974,29 +902,21 @@ const ViewerPage = () => {
       });
     }
 
-    console.log(imageriesData)
-    console.log(11122);
-
     const jsonOutput = JSON.stringify(
       {"imagery":imageriesData, "entities":entitiesData},
       null, 2);
-    console.log(jsonOutput);
     saveSceneDetail({'data': JSON.parse(jsonOutput), "code": code, "name": exportSenceName, "id": exportId}).then(res => {
-      console.log(res);
     })
 
     getSceneList().then(res => {
       setsceneLists(res.data)
     })
 
-    console.log("1111")
-    console.log(sceneLists)
     setExportSenceName("")
   }
 
   useEffect(() => {
     if (entities.length > 0) {
-      console.log("Entities have been updated:", entities);
     }
   }, [entities]); // 监听entities的变化
 
@@ -1043,7 +963,6 @@ const ViewerPage = () => {
   useEffect(() => {
     if (viewer.current) {
       viewer.current.scene.verticalExaggeration = inputValue;
-      console.log('Vertical exaggeration updated:', inputValue);
     }
   }, [inputValue]);
 
@@ -1099,14 +1018,10 @@ const ViewerPage = () => {
     if (viewer.current && LjzValue) {
       async function loadTileset() {
         try {
-          console.log("1111yyyy")
             const tileset = await Cesium.Cesium3DTileset.fromUrl(
                 'http://127.0.0.1:8000/shtower/tileset.json'
             );
-            // console.log("Tileset loaded:", tileset);
             add3DLayer('layer_ljz', tileset);
-            
-            // viewer.current.zoomTo(tileset)
         } catch (error) {
             console.error("Failed to load tileset:", error);
         }
@@ -1115,12 +1030,18 @@ const ViewerPage = () => {
     }
   }, [LjzValue]);
 
-  async function loadTileset(url) {
-    try {
-      const tileset = await Cesium.Cesium3DTileset.fromUrl(url);
-      add3DLayer('layer_ljz', tileset);
-    } catch (error) {
-      console.error("Failed to load tileset:", error);
+  async function loadTileset(tile) {
+    const layerRes = layers3D.find((layer) => layer.id === tile.id);
+    if (layerRes) {
+      remove3DLayer(tile.id);
+    }
+    else{
+      try {
+        const tileset = await Cesium.Cesium3DTileset.fromUrl(tile.data_url);
+        add3DLayer(tile.id, tileset);
+      } catch (error) {
+        console.error("Failed to load tileset:", error);
+      }
     }
   }
 
@@ -1295,6 +1216,17 @@ const ViewerPage = () => {
               />
         {/* <CheckboxGroup options={plainOptions} value={checkedList} onChange={onCheckedListChange} /> */}
       
+      </Modal>
+
+      <Modal title="挖掘配置" open={isModalExcavateOpen} onOk={handlestartExcavate} onCancel={handleExcavateCancel}>
+        <Space>
+          <p>挖掘深度</p>
+          <Input
+            name="excavate_hight"
+            value={excavateHight}
+            onChange={handleExcavateHightChange}
+          />  
+        </Space>
       </Modal>
       <Modal 
       title="位置跳转" open={isModalLocationOpen} onOk={handleLocationSubmit} onCancel={handleLocationCancel} 

@@ -93,8 +93,6 @@ function sightline(startWorldPoint, endWorldPoint, viewer) {
     var barrierPoint = Cesium.Cartesian3.ZERO;
     var startPoint = convertCartesian3ToCartesian2(viewer, startWorldPoint);
     var endPoint = convertCartesian3ToCartesian2(viewer, endWorldPoint);
-    console.log("startworldpoint", startWorldPoint)
-    console.log("endworldpoint", endWorldPoint)
     var worldLength = calculateSpatialDistance(startWorldPoint, endWorldPoint);
     var windowLength = calculateWindowDistance(startPoint, endPoint);
     var worldInterval = worldLength / 100.0;
