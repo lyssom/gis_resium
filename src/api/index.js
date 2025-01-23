@@ -60,3 +60,10 @@ export const getExcavateResource = (params) => {
         params
     })
 }
+
+export const getCzmlData = (url) => {
+    return axios.request({
+        url,
+        method: 'get',
+    })
+}

@@ -15,7 +15,7 @@ import CesiumPlot from 'cesium-plot-js';
 import {measureLineSpace, measureGroundDistance, measureAreaSpace, altitude} from "./measureTool.js"
 
 
-import {getSceneDetail, saveSceneDetail, getSceneList, getImageDatas, saveImageData, getExcavateResource} from '../../api/index.js'
+import {getSceneDetail, saveSceneDetail, getSceneList, getImageDatas, saveImageData, getExcavateResource, getCzmlData} from '../../api/index.js'
 
 const ViewerPage = () => {
   const [code, setCode] = useState(`// 编辑代码
@@ -56,6 +56,8 @@ const ViewerPage = () => {
   const [terrainList, setTerrainList] = useState([])
   const [tilesList, setTilesList] = useState([])
   const [wmsList, setWmsList] = useState([])
+  const [photoList, setPhotoList] = useState({})
+  const [czmlList, setCzmlList] = useState({})
   const [selectedTerrainId, setSelectedTerrainId] = useState(null)
   const [exportSenceName, setExportSenceName] = useState('')
 
@@ -196,6 +198,8 @@ const ViewerPage = () => {
       setTerrainList(data.terrain_data);
       setTilesList(data.tiles_data);
       setWmsList(data.wms_data);
+      setPhotoList(data.photo_data);
+      setCzmlList(data.czml_data);
     })
   }, []); // 监听entities的变化
 
@@ -239,6 +243,42 @@ const ViewerPage = () => {
   
       addImageryLayer(tile.id, imageryProv, tile.data_name);
     }
+  }
+
+  const loadPhoto = (tile) => {
+      const ent = new Cesium.Entity({
+        position: Cesium.Cartesian3.fromDegrees(tile.lon, tile.lat, tile.height),
+        billboard: {
+            image: tile.data_url,
+            scale: 1,
+            width: 32,
+            height: 32,
+        },
+    });
+    viewer.current.entities.add(ent)
+  }
+
+  const loadCzml = (tile) => {
+    console.log(111)
+    var czmlDataSource = new Cesium.CzmlDataSource();
+    viewer.current.dataSources.add(czmlDataSource);
+    console.log(tile.data_url)
+
+
+    let czmldata = new Cesium.CzmlDataSource.load('http://127.0.0.1:8000/ter_analysis/point.czml');
+    viewer.current.dataSources.add(czmldata)
+    viewer.current.clock.shouldAnimate = true;
+    // getCzmlData(tile.data_url).then(res => {
+    //   const { data } = res;
+    //   czmlDataSource.load(data);
+    //   console.log(data)
+
+    //   czmlDataSource.load(data).then(function() {
+    //     console.log('CZML Data Loaded');
+    //   })
+      
+    // })
+      
   }
 
   const dataload_tool = [
@@ -315,9 +355,56 @@ const ViewerPage = () => {
             />
           </div>
         )}
+        
         </div>
         )}
+        />)}
+
+       {photoList.length > 0 && (<List
+        dataSource={photoList}
+        split={false}
+        renderItem={(item, index) => (
+          <div className="container">
+        <List.Item style={{ padding: 0 }} key={index}>
+        <Checkbox defaultChecked={false} onChange={() =>loadPhoto(item)}/><Divider type="vertical"/>
+          {item.data_name} 
+        </List.Item> 
+        {item.lon && item.lat && (
+          <div>
+            <Button 
+              type="default" 
+              size="small" 
+              icon={<AimOutlined />} 
+              onClick={() =>fly2Loc(item.lon, item.lat, item.alt)}
+            />
+          </div>
+        )}
         
+        </div>
+        )}
+        />)}
+        {czmlList.length > 0 && (<List
+        dataSource={czmlList}
+        split={false}
+        renderItem={(item, index) => (
+          <div className="container">
+        <List.Item style={{ padding: 0 }} key={index}>
+        <Checkbox defaultChecked={false} onChange={() =>loadCzml(item)}/><Divider type="vertical"/>
+          {item.data_name} 
+        </List.Item> 
+        {item.lon && item.lat && (
+          <div>
+            <Button 
+              type="default" 
+              size="small" 
+              icon={<AimOutlined />} 
+              onClick={() =>fly2Loc(item.lon, item.lat, item.alt)}
+            />
+          </div>
+        )}
+        
+        </div>
+        )}
         />)}
         <Divider orientation="right" orientationMargin='0'><Button size="small" onClick={showImportDataModal} icon={<PlusSquareOutlined /> } style={{float: "right"}}>添加数据</Button></Divider>
       </div>
@@ -727,6 +814,8 @@ const ViewerPage = () => {
         setTerrainList(data.terrain_data);
         setTilesList(data.tiles_data);
         setWmsList(data.wms_data);
+        setPhotoList(data.photo_data);
+        setCzmlList(data.czml_data);
       })
       handleImportDataCancel() 
     }
@@ -937,6 +1026,14 @@ const ViewerPage = () => {
         //   "http://localhost:8000/tiles"
         //   ))
     });
+
+
+    // var baseLayer = viewerInstance.imageryLayers.get(0);
+    // viewerInstance.imageryLayers.remove(baseLayer);
+    // var xyz = new Cesium.UrlTemplateImageryProvider({
+    //   "url": 'http://127.0.0.1:8000/all/{z}/{x}/{y}.png'
+    // })
+    // viewerInstance.imageryLayers.addImageryProvider(xyz)
     
     viewer.current = viewerInstance;
     viewer.current.cesiumWidget.creditContainer.style.display = "none";
@@ -1037,7 +1134,33 @@ const ViewerPage = () => {
     }
     else{
       try {
+        console.log(111112)
+        initTP();
+
         const tileset = await Cesium.Cesium3DTileset.fromUrl(tile.data_url);
+        const boundingSphere = tileset.boundingSphere;
+        const cartographic = Cesium.Cartographic.fromCartesian(boundingSphere.center);
+
+        // 采样地形高度
+        const terrainProvider = viewer.current.terrainProvider;
+        console.log(terrainProvider)
+        Cesium.sampleTerrainMostDetailed(terrainProvider, [cartographic]).then((updatedCartographics) => {
+            const terrainHeight = updatedCartographics[0].height;
+
+            const surface = Cesium.Cartesian3.fromRadians(
+                cartographic.longitude,
+                cartographic.latitude,
+                terrainHeight
+            );
+
+            const offset = Cesium.Cartesian3.subtract(
+                boundingSphere.center,
+                surface,
+                new Cesium.Cartesian3()
+            );
+
+            tileset.modelMatrix = Cesium.Matrix4.fromTranslation(offset);
+        });
         add3DLayer(tile.id, tileset);
       } catch (error) {
         console.error("Failed to load tileset:", error);
@@ -1287,6 +1410,8 @@ const ViewerPage = () => {
             { value: 'terrain', label: '地形' },
             { value: 'tiles', label: '3D Tiles' },
             { value: 'WMS', label: 'TMS' },
+            { value: 'photo', label: '图片' },
+            { value: 'czml', label: 'CZML' },
           ]}
         />
         </Form.Item>
