@@ -486,35 +486,90 @@ const ViewerPage = () => {
     }
 
 
+    const createCylinder = () => {
+      if (viewer.current) {
+        var startPoint, endPoint;
+        var handler = new Cesium.ScreenSpaceEventHandler(viewer.current.canvas);
+        handler.setInputAction(function (click) {
+            var windowPosition = click.position;
+            var ray = viewer.current.camera.getPickRay(windowPosition);
+            var cartesian = viewer.current.scene.globe.pick(ray, viewer.current.scene);
+
+            if (Cesium.defined(cartesian)) {
+                if (!startPoint) {
+                    startPoint = cartesian;
+                } else {
+                    endPoint = cartesian;
+                    const midpoint = Cesium.Cartesian3.midpoint(startPoint, endPoint, new Cesium.Cartesian3());
+                    const rr = Cesium.Cartesian3.distance(startPoint, endPoint);
+                    const topRadius = rr ;  // 固定的顶部半径
+                    const bottomRadius = rr;  // 固定的底部半径
+                    console.log("Midpoint:", midpoint);
+                    console.log("Distance:", Cesium.Cartesian3.distance(startPoint, endPoint));
+                    const cylinderEntity = new Cesium.Entity({
+                        position: midpoint,  // 设置圆柱体的中心位置
+                        cylinder: {
+                            material: Cesium.Color.ORCHID,
+                            length: 100000,  // 设置圆柱体的高度（两点间的距离）
+                            topRadius: topRadius,  // 设置圆柱体的顶部半径
+                            bottomRadius: bottomRadius,  // 设置圆柱体的底部半径
+                            outline: true,
+                            outlineColor: Cesium.Color.LAWNGREEN
+                        }
+                    });
+        
+                    viewer.current.entities.add(cylinderEntity);
+                    handler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK);
+                }
+            } else {
+                console.log("No valid position picked.");
+            }
+        }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+        handler.setInputAction(function (click) {
+          startPoint = undefined;
+          endPoint = undefined;
+          clears(viewer.current);
+          
+          console.log("Operation canceled, startPoint and endPoint cleared.");
+      }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
+      }
+    }
+
+
+
     const markTool = [
       <Space wrap="false" align="baseline">
-      <Button type="primary" 
+      <Button
       onClick={() =>addEntity('point')}
       >点</Button>
-      <Button type="primary" 
+      <Button
       onClick={() =>addEntity('billboard')}
       >标记</Button>
-      <Button type="primary" 
+      <Button
       onClick={() =>addTailShape()}
       >燕尾图</Button>
-      <Button type="primary" 
+      <Button
       onClick={() =>addCircleShape()}
       >圆形</Button>
-      <Button type="primary" 
+      <Button
       onClick={() =>addReactangleShape()}
       >矩形</Button>
-      <Button type="primary" 
+      <Button
       onClick={() =>addTriangleShape()}
       >三角形</Button>
-      <Button type="primary" 
+      <Button
       onClick={() =>addLuneShape()}
       >半月面</Button>
-      <Button type="primary" 
+      <Button
       onClick={() =>addEllipseShape()}
       >椭圆</Button>
-      <Button type="primary" 
+      <Button
       onClick={() =>addDoubleArrowShape()}
       >双箭头</Button>
+      <Button
+      onClick={() =>createCylinder()}
+      >圆柱体</Button>
       </Space>
     ];
 
@@ -849,7 +904,7 @@ const ViewerPage = () => {
         </Col>
       </Row>
       {/* <Row><Button onClick={handleLonLat}>经纬度显示</Button></Row> */}
-      <Row><Button type="primary" onClick={showLocationModal}>位置跳转</Button></Row>
+      <Row><Button onClick={showLocationModal}>位置跳转</Button></Row>
     </Space>
     </div>
     ];
@@ -887,8 +942,8 @@ const ViewerPage = () => {
       )}
     />
         <div className="container">
-        <Row><Button type="primary" onClick={showImportModal}>导入场景</Button></Row>
-        <Row><Button type="primary" onClick={showModal}>导出场景</Button></Row>
+        <Row><Button onClick={showImportModal}>导入场景</Button></Row>
+        <Row><Button onClick={showModal}>导出场景</Button></Row>
         </div>
       </div>
       ];
@@ -1212,7 +1267,7 @@ const ViewerPage = () => {
 
     {
       key: '3',
-      label: '标记工具',
+      label: '标记建模',
       children: <List
       // header={<div>数据加载</div>}
       dataSource={markTool}
@@ -1292,7 +1347,7 @@ const ViewerPage = () => {
       onChange={(value) => setCode(value || "")}
       theme="vs-dark"
       />
-      <Button onClick={runCode}>运行代码</Button>
+      <Button onClick={runCode} type="perimary">运行代码</Button>
       <Modal title="场景导出" open={isModalOpen} onOk={handleExport} onCancel={handleCancel}>
       <Space direction="vertical" style={{ width: '100%' }}>
       <List
@@ -1463,9 +1518,11 @@ const ViewerPage = () => {
     <div style={{ position: 'relative', height: '100vh' }}>
       <div
         id="cesiumContainer"
+        className="fullSize"
         ref={viewerRef}
         style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
       ></div>
+      <div id="toolbar">多 源 数 据 融 合</div>
     </div>
     </div>
 
