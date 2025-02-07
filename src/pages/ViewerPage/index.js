@@ -574,7 +574,8 @@ const ViewerPage = () => {
     ];
 
     const initTP = async() => {
-      const wterrainProvider = await Cesium.createWorldTerrainAsync()
+      // const wterrainProvider = await Cesium.createWorldTerrainAsync()
+      const wterrainProvider = await Cesium.CesiumTerrainProvider.fromUrl("http:/127.0.0.1:8000/all_tiles/")
       viewer.current.terrainProvider = wterrainProvider;
     }
 
@@ -586,7 +587,7 @@ const ViewerPage = () => {
 
     const handlExcavate = () => {
       viewer.current.scene.globe.depthTestAgainstTerrain = true;
-      initTP();
+      // initTP();
 
     const scene = viewer.current.scene;
     const handler = new Cesium.ScreenSpaceEventHandler(scene.canvas);
@@ -777,7 +778,7 @@ const ViewerPage = () => {
           point = new Cesium.Entity({
             position: Cesium.Cartesian3.fromDegrees(longitude, latitude, 2000),
             billboard: {
-                image: 'http://webapi.amap.com/theme/v1.3/markers/n/mark_b.png',
+                image: 'http://127.0.0.1:8000/static/mark_b.png',
                 scale: 1,
             }
           });
@@ -1083,12 +1084,12 @@ const ViewerPage = () => {
     });
 
 
-    // var baseLayer = viewerInstance.imageryLayers.get(0);
-    // viewerInstance.imageryLayers.remove(baseLayer);
-    // var xyz = new Cesium.UrlTemplateImageryProvider({
-    //   "url": 'http://127.0.0.1:8000/all/{z}/{x}/{y}.png'
-    // })
-    // viewerInstance.imageryLayers.addImageryProvider(xyz)
+    var baseLayer = viewerInstance.imageryLayers.get(0);
+    viewerInstance.imageryLayers.remove(baseLayer);
+    var xyz = new Cesium.TileMapServiceImageryProvider({
+      "url": 'http://127.0.0.1:8000/base_map/{z}/{x}/{y}.png'
+    })
+    viewerInstance.imageryLayers.addImageryProvider(xyz)
     
     viewer.current = viewerInstance;
     viewer.current.cesiumWidget.creditContainer.style.display = "none";
