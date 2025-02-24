@@ -67,3 +67,11 @@ export const getCzmlData = (url) => {
         method: 'get',
     })
 }
+
+
+// export const getwindData = () => {
+//     return axios.request({
+//         url: '/get_wind_data',
+//         method: 'get',
+//     })
+// }

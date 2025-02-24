@@ -5,13 +5,16 @@ import { Col, InputNumber, Row, Slider, Space } from 'antd';
 import { Editor } from "@monaco-editor/react";
 import { MenuUnfoldOutlined } from '@ant-design/icons';
 import { Button, Drawer, FloatButton, List, Typography, Flex, Splitter, Modal, Checkbox, Switch, Divider, Collapse, Radio, Form, Input, Select } from 'antd';
-import { AimOutlined, DeleteOutlined, LineOutlined, PlusSquareOutlined, EnvironmentOutlined, DeploymentUnitOutlined } from '@ant-design/icons';
+import { AimOutlined, DeleteOutlined, LineOutlined, PlusSquareOutlined, EnvironmentOutlined, DownloadOutlined } from '@ant-design/icons';
 import "./index.css"
 import excavateTerrain from "./excavateTerrain.js"
 import {load, clears } from "./line_of_sight.js"
+import {CesiumWind, WindLayer} from "./cesium-wind.js"
 import { message } from 'antd';
 import CesiumPlot from 'cesium-plot-js';
 
+
+import axios from '../../api/axios'
 import {measureLineSpace, measureGroundDistance, measureAreaSpace, altitude} from "./measureTool.js"
 
 
@@ -190,6 +193,69 @@ const ViewerPage = () => {
 
   const handleDeleteEntitiy = (id) => { // 删除实体 
     viewer.current.entities.removeById(id);
+  };
+
+  const handleDownloadEntitiy = (id) => { // 删除实体 
+    // viewer.current.entities.removeById(id);
+    // console.log(66666666)
+    let entity = viewer.current.entities.getById(id);
+
+    let geojson = {
+      type: "FeatureCollection",
+      features: []
+    };
+
+    console.log(entity)
+    let feature = {
+      type: "Feature",
+      properties: {
+        name: entity.name || "Unknown"
+      },
+      geometry: null
+    };
+    if (entity.position) {
+      let cartographic = Cesium.Cartographic.fromCartesian(entity.position.getValue(Cesium.JulianDate.now()));
+      let lon = Cesium.Math.toDegrees(cartographic.longitude);
+      let lat = Cesium.Math.toDegrees(cartographic.latitude);
+      feature.geometry = {
+          type: "Point",
+          coordinates: [lon, lat]
+      };
+    } else if (entity.polygon) {
+      let hierarchy = entity.polygon.hierarchy.getValue(Cesium.JulianDate.now());
+      let coordinates = hierarchy.positions.map(pos => {
+          let cartographic = Cesium.Cartographic.fromCartesian(pos);
+          return [Cesium.Math.toDegrees(cartographic.longitude), Cesium.Math.toDegrees(cartographic.latitude)];
+      });
+      coordinates.push(coordinates[0]); // 关闭多边形
+      feature.geometry = {
+          type: "Polygon",
+          coordinates: [coordinates]
+      };
+    } else if (entity.polyline) {
+      let positions = entity.polyline.positions.getValue(Cesium.JulianDate.now());
+      let coordinates = positions.map(pos => {
+          let cartographic = Cesium.Cartographic.fromCartesian(pos);
+          return [Cesium.Math.toDegrees(cartographic.longitude), Cesium.Math.toDegrees(cartographic.latitude)];
+      });
+      feature.geometry = {
+          type: "LineString",
+          coordinates: coordinates
+      };
+    }
+
+    if (feature.geometry) {
+        geojson.features.push(feature);
+    }
+    console.log(geojson)
+    console.log(7778)
+
+    let blob = new Blob([JSON.stringify(geojson)], { type: "application/json" });
+    let url = URL.createObjectURL(blob);
+    let a = document.createElement("a");
+    a.href = url;
+    a.download = "entities.geojson";
+    a.click();
   };
 
   useEffect(() => {
@@ -459,6 +525,63 @@ const ViewerPage = () => {
 
     const addTailShape = () => {
       new CesiumPlot.FineArrow(Cesium, viewer.current);
+    }
+
+
+    const getwindData = () => {
+      return axios.request({
+          url: '/static/2024122600.json',
+          method: 'get',
+      })
+  }
+
+    const createWind = () => {
+      
+      const windOptions = {
+        colorScale: [
+            'rgb(36,104, 180)',
+            'rgb(60,157, 194)',
+            'rgb(128,205,193 )',
+            'rgb(151,218,168 )',
+            'rgb(198,231,181)',
+            'rgb(238,247,217)',
+            'rgb(255,238,159)',
+            'rgb(252,217,125)',
+            'rgb(255,182,100)',
+            'rgb(252,150,75)',
+            'rgb(250,112,52)',
+            'rgb(245,64,32)',
+            'rgb(237,45,28)',
+            'rgb(220,24,32)',
+            'rgb(180,0,35)',
+        ],
+        frameRate: 16,
+        maxAge: 60,
+        globalAlpha: 0.9,
+        velocityScale: 1 / 30,
+        paths: 2000,
+        minVelocity : 35,
+        maxVelocity : 38,
+    };
+    let windLayer;
+
+    getwindData().then(res => {
+      // setsceneLists(res.data)
+      windLayer = new WindLayer(res.data, { windOptions });
+      windLayer.addTo(viewer.current);
+    })
+
+    // windLayer = new CesiumWind.WindLayer(res, { windOptions });
+    // windLayer.addTo(viewer);
+    // fetch('./2024122900.json')
+    //     .then(res => res.json())
+    //     .then(res => {
+    //         windLayer = new WindLayer(res, { windOptions });
+    //         windLayer.addTo(viewer.current);
+    //         // windLayer.remove();
+    //     });
+
+    // console.log(666)
     }
 
     const addCircleShape = () => {
@@ -920,6 +1043,12 @@ const ViewerPage = () => {
           <Typography.Text mark></Typography.Text>  {item._name ? item._name : 'entity_' + index}
           <Button
             type="text"
+            icon={<DownloadOutlined />}
+            onClick={() => handleDownloadEntitiy(item.id)} // 删除按钮点击事件
+            style={{ marginLeft: 'auto' }} // 确保按钮在右侧
+          />
+          <Button
+            type="text"
             icon={<DeleteOutlined />}
             onClick={() => handleDeleteEntitiy(item.id)} // 删除按钮点击事件
             style={{ marginLeft: 'auto' }} // 确保按钮在右侧
@@ -1239,8 +1368,8 @@ const ViewerPage = () => {
   const runCode = () => {
     try {
       const cviewer = viewer.current;
-      const userFunction = new Function("viewer", "Cesium", code);
-      userFunction(cviewer, Cesium);
+      const userFunction = new Function("viewer", "Cesium", "axios", "WindLayer", code);
+      userFunction(cviewer, Cesium, axios, WindLayer);
     } catch (error) {
       alert("代码运行错误：" + error.message);
     }
@@ -1527,7 +1656,7 @@ const ViewerPage = () => {
     </div>
     </div>
 
-      <div onMouseEnter={showDrawer}> <FloatButton shape="square" type="primary"style={{insetInlineEnd: 24,}}icon={<MenuUnfoldOutlined />}/></div>
+      <div onClick={showDrawer}> <FloatButton shape="square" type="primary"style={{insetInlineEnd: 24,}}icon={<MenuUnfoldOutlined />}/></div>
       <Drawer
         title="工具箱"
         placement="left"
