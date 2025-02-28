@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, use } from "react";
 import * as Cesium from "cesium";
 import { Col, InputNumber, Row, Slider, Space } from 'antd';
 
-import { Editor } from "@monaco-editor/react";
+import { Editor,loader  } from "@monaco-editor/react";
 import { MenuUnfoldOutlined } from '@ant-design/icons';
 import { Button, Drawer, FloatButton, List, Typography, Flex, Splitter, Modal, Checkbox, Switch, Divider, Collapse, Radio, Form, Input, Select } from 'antd';
 import { AimOutlined, DeleteOutlined, LineOutlined, PlusSquareOutlined, EnvironmentOutlined, DownloadOutlined } from '@ant-design/icons';
@@ -21,6 +21,11 @@ import {measureLineSpace, measureGroundDistance, measureAreaSpace, altitude} fro
 import {getSceneDetail, saveSceneDetail, getSceneList, getImageDatas, saveImageData, getExcavateResource, getCzmlData} from '../../api/index.js'
 
 const ViewerPage = () => {
+  loader.config({
+    paths: {
+      vs: 'http://127.0.0.1:8000/static/vs',
+    },
+  });
   const [code, setCode] = useState(`// 编辑代码
   `);
   const [eiditerSize, setEiditerSize] = useState('0%');
@@ -608,6 +613,130 @@ const ViewerPage = () => {
       new CesiumPlot.DoubleArrow(Cesium, viewer.current);
     }
 
+    const diffTer = () => {  
+      
+      const url2 = "http://127.0.0.1:8000/static/jg"
+      const url1 = "http://127.0.0.1:8000/static/flat_jg"
+      
+      initCustomTP(url1)
+      const longitude1 = 130.9844444984249
+      const latitude1 = 45.26029255146479
+      const longitude2 = 130.97337761004155
+      const latitude2 = 45.25578210040948
+      
+      const lonDiff = longitude1 - longitude2;
+      const latDiff = latitude1 - latitude2;
+        
+        // 生成100个均匀分布的点
+        const numPoints = 100;
+        const points1 = [];
+        const points2 = [];
+
+        for (let i = 0; i < numPoints; i++) {
+            // const lon = positions[0].longitude + t * lonDiff;
+            // const lat = positions[0].latitude + t * latDiff;
+            const lon = longitude1 + (lonDiff * i) / (numPoints - 1);
+            const lat = latitude1 + (latDiff * i) / (numPoints - 1);
+            console.log(111222)
+            console.log(lon, lat)
+            console.log(111)
+            
+            points1.push(Cesium.Cartographic.fromDegrees(lon, lat));
+            points2.push(Cesium.Cartographic.fromDegrees(lon, lat));
+        }
+        
+        // 打印生成的点
+        console.log(points1)
+    Cesium.CesiumTerrainProvider.fromUrl(url1).then(t1 => {
+      console.log("t1 Ready:", t1);
+      Cesium.sampleTerrain(t1, 14, points1).then(up1 => {
+        console.log("up1:", up1);
+        Cesium.CesiumTerrainProvider.fromUrl(url2).then(t2 => {
+          console.log("t2 Ready:", t2);
+          Cesium.sampleTerrain(t2, 14, points2).then(up2 => {
+            console.log("up2:", up2);
+
+            const heightDiffs = up1.map((pos, index) => {
+              let height1 = pos?.height ?? 0;
+              const height2 = up2[index]?.height ?? 0;
+              console.log(height1, height2)
+              return height1 - height2;
+            });
+            
+            for (let i = 0; i < points1.length; i++) {
+              const cartographic = points1[i];
+              viewer.current.entities.add({
+                polyline: {
+                  positions: [
+                    Cesium.Cartesian3.fromRadians(cartographic.longitude, cartographic.latitude, up1[i].height),
+                    Cesium.Cartesian3.fromRadians(cartographic.longitude, cartographic.latitude, up2[i].height),
+                  ],
+                  width: 2,
+                  material: heightDiffs[i] > 0 ? Cesium.Color.RED : Cesium.Color.BLUE,
+                },
+            });
+        }
+        console.log("Height Differences:", heightDiffs);
+          })
+        })
+      })
+    })
+    }
+      
+    
+    const perspective = () => {
+      initTP();
+      const position = Cesium.Cartesian3.fromRadians(
+        -2.0862979473351286,
+        0.6586620013036164,
+        1400.0,
+      );
+    
+      const entity = viewer.current.entities.add({
+        position: position,
+        box: {
+          dimensions: new Cesium.Cartesian3(1400.0, 1400.0, 2800.0),
+          material: Cesium.Color.WHITE.withAlpha(0.3),
+          outline: true,
+          outlineColor: Cesium.Color.WHITE,
+        },
+      });
+
+      const position1 = Cesium.Cartesian3.fromDegrees(-119.53425816053938, 37.74516619631135, 2645.2503255914385);
+      const position2 = Cesium.Cartesian3.fromDegrees(-119.53809192430263, 37.73184280293752, 2733.2710411652242);
+      const position3 = Cesium.Cartesian3.fromDegrees(-119.54612365179732, 37.7386414966634, 2707.024549426925);
+      const position_end = Cesium.Cartesian3.fromDegrees(-119.53576035731167, 37.74110180202345, 1500);
+      const positions = [position1, position2, position3];
+
+      positions.forEach((position) => {
+        viewer.current.entities.add({
+            polyline: {
+                positions: [position, position_end],
+                width: 2,  // 线条宽度
+                material: Cesium.Color.RED // 线条颜色
+            }
+        });
+    });
+
+      viewer.current.scene.globe.depthTestAgainstTerrain = true;
+      viewer.current.scene.globe.clippingPlanes = new Cesium.ClippingPlaneCollection({
+        modelMatrix: entity.computeModelMatrix(Cesium.JulianDate.now()),
+        planes: [
+          new Cesium.ClippingPlane(new Cesium.Cartesian3(1.0, 0.0, 0.0), -700.0),
+          new Cesium.ClippingPlane(new Cesium.Cartesian3(-1.0, 0.0, 0.0), -700.0),
+          new Cesium.ClippingPlane(new Cesium.Cartesian3(0.0, 1.0, 0.0), -700.0),
+          new Cesium.ClippingPlane(new Cesium.Cartesian3(0.0, -1.0, 0.0), -700.0),
+        ],
+        edgeWidth: 1.0,
+        edgeColor: Cesium.Color.WHITE,
+        enabled: true,
+      });
+      viewer.current.scene.globe.backFaceCulling = true;
+      viewer.current.scene.globe.showSkirts = true;
+    
+      viewer.current.trackedEntity = entity;
+
+    }
 
     const createCylinder = () => {
       if (viewer.current) {
