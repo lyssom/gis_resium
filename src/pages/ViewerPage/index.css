@@ -105,3 +105,56 @@ height: 100%;
     background-color: rgba(11, 72, 116, 0.0) !important;
     color: #b0bac2 !important;
 }
+/* 
+#lanlatlbar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    background-color: #0b4874;
+    color: #b0bac2;
+    font-weight: bold;
+    font-size: 18px;
+    padding: 5px;
+    padding-right: 40px;
+    padding-left: 20px;
+    clip-path: polygon(10% 0, 90% 0, 100% 100%, 0% 100%);
+
+    background-color: rgba(11, 72, 116, 0.6);
+} */
+
+#lanlatlbar {
+    position: absolute;
+    bottom: 0;
+    width: 20%; /* 使宽度随屏幕宽度缩放 */
+    height: 14px;  /* 高度减少一半 */
+    background-color: rgba(11, 72, 116, 0.6);
+    color: #b0bac2;
+    font-weight: bold;
+    font-size: 9px;
+    padding: 5px 40px 5px 20px;
+    clip-path: polygon(10% 0, 90% 0, 100% 100%, 0% 100%);
+    
+    display: flex;
+    align-items: center;    /* 垂直居中 */
+    justify-content: center; /* 水平居中 */
+}
+
+#camerabar {
+    position: absolute;
+    bottom: 0;
+    right: 0; /* 位于屏幕最右边 */
+    width: 13%; /* 使宽度随屏幕宽度缩放 */
+    height: 14px;  /* 高度减少一半 */
+    background-color: rgba(11, 72, 116, 0.6);
+    color: #b0bac2;
+    font-weight: bold;
+    font-size: 9px;
+    padding: 5px 40px 5px 20px;
+    clip-path: polygon(10% 0, 90% 0, 100% 100%, 0% 100%);
+    
+    display: flex;
+    align-items: center;    /* 垂直居中 */
+    justify-content: center; /* 水平居中 */
+}
+
+

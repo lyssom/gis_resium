@@ -132,7 +132,7 @@ class excavateTerrain {
             }
         }
         viewer.entities.add({
-            id: "entityDM",
+            id: "entityDM_"+ Cesium.createGuid(),
             polygon: {
                 hierarchy: Cesium.Cartesian3.fromDegreesArray(nar),
                 material: new Cesium.ImageMaterialProperty({
@@ -197,7 +197,7 @@ class excavateTerrain {
                     minimumHeights.push(hhh[0] - config.height);
                 }
                 viewer.entities.add({
-                    id: "entityDMBJ",
+                    id: "entityDMBJ_"+ Cesium.createGuid(),
                     wall: {
                         positions: Cesium.Cartesian3.fromDegreesArray(nar22),
                         maximumHeights: maximumHeightsARR,
@@ -216,7 +216,7 @@ class excavateTerrain {
                 minimumHeights.push(hhh[0] - config.height);
             }
             viewer.entities.add({
-                id: "entityDMBJ",
+                id: "entityDMBJ_"+ Cesium.createGuid(),
                 wall: {
                     positions: Cesium.Cartesian3.fromDegreesArray(nar22),
                     maximumHeights: maximumHeightsARR,

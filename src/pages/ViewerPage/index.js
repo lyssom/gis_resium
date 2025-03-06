@@ -86,6 +86,15 @@ const ViewerPage = () => {
     altitude: ''
   });
 
+  const [glocal, setglocal] = useState(
+    {
+      longitude: 0,
+      latitude: 0,
+      altitude: 0,
+      cameraAltitude: 0
+    }
+  )
+
   const handleLocationChange = (e) => {
     setCoordinates({
       ...coordinates,
@@ -200,67 +209,152 @@ const ViewerPage = () => {
     viewer.current.entities.removeById(id);
   };
 
-  const handleDownloadEntitiy = (id) => { // 删除实体 
-    // viewer.current.entities.removeById(id);
-    // console.log(66666666)
-    let entity = viewer.current.entities.getById(id);
 
-    let geojson = {
+  function cylinderToGeoJSON(entity, segments = 36) {
+    if (!entity.cylinder || !entity.position) return null;
+
+    const position = entity.position.getValue(Cesium.JulianDate.now());
+    const cartographic = Cesium.Cartographic.fromCartesian(position);
+    const lon = Cesium.Math.toDegrees(cartographic.longitude);
+    const lat = Cesium.Math.toDegrees(cartographic.latitude);
+    const height = cartographic.height || 0;
+
+    const topRadius = entity.cylinder.topRadius.getValue(Cesium.JulianDate.now());
+    const bottomRadius = entity.cylinder.bottomRadius.getValue(Cesium.JulianDate.now());
+    const length = entity.cylinder.length.getValue(Cesium.JulianDate.now());
+
+    const bottomHeight = height - length / 2;
+    const topHeight = height + length / 2;
+
+    function generateCircle(lon, lat, radius, height, segments) {
+        const positions = [];
+        for (let i = 0; i < segments; i++) {
+            const angle = (i / segments) * 2 * Math.PI;
+            const offsetLon = (radius / 111320) * Math.cos(angle);
+            const offsetLat = (radius / 111320) * Math.sin(angle);
+            positions.push([lon + offsetLon, lat + offsetLat, height]);
+        }
+        positions.push(positions[0]); // 闭合多边形
+        return positions;
+    }
+
+    const bottomPolygon = generateCircle(lon, lat, bottomRadius, bottomHeight, segments);
+    const topPolygon = generateCircle(lon, lat, topRadius, topHeight, segments);
+
+    return {
+        type: "FeatureCollection",
+        features: [
+            {
+                type: "Feature",
+                geometry: {
+                    type: "Polygon",
+                    coordinates: [bottomPolygon]
+                },
+                properties: { id: entity.id, name: entity.name || "Cylinder Bottom" }
+            },
+            {
+                type: "Feature",
+                geometry: {
+                    type: "Polygon",
+                    coordinates: [topPolygon]
+                },
+                properties: { id: entity.id, name: entity.name || "Cylinder Top" }
+            }
+        ]
+    };
+}
+
+function prismToGeoJSON(entity, heightOffset = 100) {
+  if (!entity.polygon || !entity.polygon.hierarchy) return null;
+
+  // 获取底面点
+  const positions = entity.polygon.hierarchy.getValue(Cesium.JulianDate.now()).positions;
+  if (positions.length < 3) return null; // 确保至少是三角形（否则无法构成柱体）
+
+  // 转换底面点为经纬度
+  function cartesianToLonLatHeight(cartesian) {
+      const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
+      return [
+          Cesium.Math.toDegrees(cartographic.longitude),
+          Cesium.Math.toDegrees(cartographic.latitude),
+          cartographic.height
+      ];
+  }
+
+  const bottomPoints = positions.map(cartesianToLonLatHeight);
+  const topPoints = bottomPoints.map(p => [p[0], p[1], p[2] + heightOffset]); // 计算顶部点
+
+  // 生成侧面
+  function generateSide(p1, p2, p3, p4) {
+      return {
+          type: "Feature",
+          geometry: {
+              type: "Polygon",
+              coordinates: [[p1, p2, p3, p4, p1]] // 侧面是四边形，必须闭合
+          },
+          properties: { id: entity.id, name: "Prism Side" }
+      };
+  }
+
+  // 生成五个侧面（自动适应多边形）
+  const sides = [];
+  for (let i = 0; i < bottomPoints.length; i++) {
+      const next = (i + 1) % bottomPoints.length;
+      sides.push(generateSide(bottomPoints[i], bottomPoints[next], topPoints[next], topPoints[i]));
+  }
+
+  return {
       type: "FeatureCollection",
-      features: []
-    };
+      features: [
+          {
+              type: "Feature",
+              geometry: { type: "Polygon", coordinates: [bottomPoints.concat([bottomPoints[0]])] }, // 闭合底面
+              properties: { id: entity.id, name: "Prism Bottom" }
+          },
+          {
+              type: "Feature",
+              geometry: { type: "Polygon", coordinates: [topPoints.concat([topPoints[0]])] }, // 闭合顶部
+              properties: { id: entity.id, name: "Prism Top" }
+          },
+          ...sides
+      ]
+  };
+}
 
-    console.log(entity)
-    let feature = {
-      type: "Feature",
-      properties: {
-        name: entity.name || "Unknown"
-      },
-      geometry: null
-    };
-    if (entity.position) {
-      let cartographic = Cesium.Cartographic.fromCartesian(entity.position.getValue(Cesium.JulianDate.now()));
-      let lon = Cesium.Math.toDegrees(cartographic.longitude);
-      let lat = Cesium.Math.toDegrees(cartographic.latitude);
-      feature.geometry = {
-          type: "Point",
-          coordinates: [lon, lat]
-      };
-    } else if (entity.polygon) {
-      let hierarchy = entity.polygon.hierarchy.getValue(Cesium.JulianDate.now());
-      let coordinates = hierarchy.positions.map(pos => {
-          let cartographic = Cesium.Cartographic.fromCartesian(pos);
-          return [Cesium.Math.toDegrees(cartographic.longitude), Cesium.Math.toDegrees(cartographic.latitude)];
-      });
-      coordinates.push(coordinates[0]); // 关闭多边形
-      feature.geometry = {
-          type: "Polygon",
-          coordinates: [coordinates]
-      };
-    } else if (entity.polyline) {
-      let positions = entity.polyline.positions.getValue(Cesium.JulianDate.now());
-      let coordinates = positions.map(pos => {
-          let cartographic = Cesium.Cartographic.fromCartesian(pos);
-          return [Cesium.Math.toDegrees(cartographic.longitude), Cesium.Math.toDegrees(cartographic.latitude)];
-      });
-      feature.geometry = {
-          type: "LineString",
-          coordinates: coordinates
-      };
-    }
 
-    if (feature.geometry) {
-        geojson.features.push(feature);
-    }
-    console.log(geojson)
-    console.log(7778)
 
-    let blob = new Blob([JSON.stringify(geojson)], { type: "application/json" });
-    let url = URL.createObjectURL(blob);
-    let a = document.createElement("a");
-    a.href = url;
-    a.download = "entities.geojson";
-    a.click();
+  const handleDownloadEntitiy = (id) => { 
+      let entity = viewer.current.entities.getById(id);
+
+      if (!entity) {
+          console.error("未找到指定 ID 的实体");
+          return;
+      }
+  
+      console.log("Entity:", entity);
+      console.log("Entity:", entity.name);
+
+      let geojson
+
+      if (entity.name === "圆柱") {
+        geojson = cylinderToGeoJSON(entity)
+      } else {
+        geojson = prismToGeoJSON(entity)
+      }
+      console.log(2222111333)
+      console.log(geojson)
+      console.log(2222111)
+
+  
+      // console.log("GeoJSON:", geojson);
+  
+      // 生成下载文件
+      const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "entity.geojson";
+      a.click();
   };
 
   useEffect(() => {
@@ -738,6 +832,61 @@ const ViewerPage = () => {
 
     }
 
+    const createPolygon = () => {
+      const positions = [];
+
+      // 监听鼠标点击事件
+      const handler = new Cesium.ScreenSpaceEventHandler(viewer.current.canvas);
+      handler.setInputAction(function (click) {
+          // 获取点击位置的地理坐标（经纬度）
+          const cartesian = viewer.current.scene.camera.pickEllipsoid(
+              click.position,
+              Cesium.Ellipsoid.WGS84
+          );
+
+          if (!cartesian) return;
+
+          // 存储点击的点
+          positions.push(cartesian);
+
+          // 在点击的位置添加黄色点
+          viewer.current.entities.add({
+              position: cartesian,
+              point: {
+                  pixelSize: 8,
+                  color: Cesium.Color.YELLOW,
+              },
+          });
+
+          // 如果达到 4 个点（四棱柱）或 5 个点（五棱柱），创建柱体
+          if (positions.length === 4 || positions.length === 5) {
+              handler.setInputAction(function () {
+                createExtrudedPolygon();
+                handler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK); // 停止监听点击
+            }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
+          }
+      }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+      // 创建柱体
+      function createExtrudedPolygon() {
+        const polygonType = positions.length === 4 ? "四棱柱" : "五棱柱";
+          viewer.current.entities.add({
+            position: positions[0],
+              name: polygonType ,
+              polygon: {
+                  hierarchy: new Cesium.PolygonHierarchy(positions),
+                  material: Cesium.Color.RED.withAlpha(0.5), // 半透明红色填充
+                  outline: true,
+                  outlineColor: Cesium.Color.BLACK,
+                  extrudedHeight: 50000, // 设置柱体高度（单位：米）
+              },
+          });
+
+          viewer.current.zoomTo(viewer.current.entities);
+      }
+    }
+
+
     const createCylinder = () => {
       if (viewer.current) {
         var startPoint, endPoint;
@@ -759,7 +908,8 @@ const ViewerPage = () => {
                     console.log("Midpoint:", midpoint);
                     console.log("Distance:", Cesium.Cartesian3.distance(startPoint, endPoint));
                     const cylinderEntity = new Cesium.Entity({
-                        position: midpoint,  // 设置圆柱体的中心位置
+                        position: midpoint,
+                        name: "圆柱",
                         cylinder: {
                             material: Cesium.Color.ORCHID,
                             length: 100000,  // 设置圆柱体的高度（两点间的距离）
@@ -822,6 +972,9 @@ const ViewerPage = () => {
       <Button
       onClick={() =>createCylinder()}
       >圆柱体</Button>
+      <Button
+      onClick={() =>createPolygon()}
+      >多棱柱</Button>
       </Space>
     ];
 
@@ -835,7 +988,6 @@ const ViewerPage = () => {
       const wterrainProvider = await Cesium.CesiumTerrainProvider.fromUrl(url)
       viewer.current.terrainProvider = wterrainProvider;
     }
-
 
     const handlExcavate = () => {
       viewer.current.scene.globe.depthTestAgainstTerrain = true;
@@ -854,6 +1006,53 @@ const ViewerPage = () => {
         if (Cesium.defined(position)) {
             if (!firstClickPosition) {
                 firstClickPosition = position;
+                let startPosition = Cesium.Cartographic.fromCartesian(position);
+                if (!rectangleEntity) {
+                  rectangleEntity = viewer.current.entities.add({
+                      rectangle: {
+                          coordinates: new Cesium.CallbackProperty(() => {
+                              if (!startPosition) return Cesium.Rectangle.EMPTY;
+                              return Cesium.Rectangle.fromDegrees(
+                                  Cesium.Math.toDegrees(startPosition.longitude),
+                                  Cesium.Math.toDegrees(startPosition.latitude),
+                                  Cesium.Math.toDegrees(startPosition.longitude), // 先初始化
+                                  Cesium.Math.toDegrees(startPosition.latitude)
+                              );
+                          }, false),
+                          outline: true,
+                          material: Cesium.Color.RED.withAlpha(0.1),
+                          outlineColor: Cesium.Color.YELLOW,
+                          outlineWidth: 2.0 // 线条宽度
+                      },
+                  });
+              }
+                handler.setInputAction((moveEvent) => {
+                  if (!startPosition) return;
+              
+                  let moveCartesian = viewer.current.scene.camera.pickEllipsoid(
+                      moveEvent.endPosition,
+                      Cesium.Ellipsoid.WGS84
+                  );
+                  if (!moveCartesian) return;
+              
+                  let endPosition = Cesium.Cartographic.fromCartesian(moveCartesian);
+              
+                  // 确保 north >= south，east >= west
+                  const west = Math.min(startPosition.longitude, endPosition.longitude);
+                  const east = Math.max(startPosition.longitude, endPosition.longitude);
+                  const south = Math.min(startPosition.latitude, endPosition.latitude);
+                  const north = Math.max(startPosition.latitude, endPosition.latitude);
+              
+                  rectangleEntity.rectangle.coordinates = new Cesium.CallbackProperty(() => {
+                      return Cesium.Rectangle.fromDegrees(
+                          Cesium.Math.toDegrees(west),
+                          Cesium.Math.toDegrees(south),
+                          Cesium.Math.toDegrees(east),
+                          Cesium.Math.toDegrees(north)
+                      );
+                  }, false);
+              }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
             } else {
                 const rectangleCoordinates = Cesium.Rectangle.fromCartographicArray([
                     Cesium.Cartographic.fromCartesian(firstClickPosition),
@@ -1169,13 +1368,14 @@ const ViewerPage = () => {
       dataSource={entities}
       renderItem={(item, index) => (
         <List.Item key={index}>
-          <Typography.Text mark></Typography.Text>  {item._name ? item._name : 'entity_' + index}
-          <Button
+          <Typography.Text mark></Typography.Text>  {item._name ? item._name +'_'+ index : 'entity_' + index}
+
+          {(item._name == "四棱柱" || item._name == "五棱柱"|| item._name == "圆柱") && (<Button
             type="text"
             icon={<DownloadOutlined />}
             onClick={() => handleDownloadEntitiy(item.id)} // 删除按钮点击事件
             style={{ marginLeft: 'auto' }} // 确保按钮在右侧
-          />
+          />)}
           <Button
             type="text"
             icon={<DeleteOutlined />}
@@ -1323,6 +1523,33 @@ const ViewerPage = () => {
     }
   }, [entities]); // 监听entities的变化
 
+
+  const getGlocal = () => {
+        // 监听鼠标移动事件
+        var handler = new Cesium.ScreenSpaceEventHandler(viewer.current.scene.canvas);
+        handler.setInputAction(function (movement) {
+            var cartesian = viewer.current.scene.globe.pick(
+              viewer.current.camera.getPickRay(movement.endPosition),
+              viewer.current.scene
+            );
+    
+            if (cartesian) {
+                var cartographic = Cesium.Ellipsoid.WGS84.cartesianToCartographic(cartesian);
+                var longitude = Cesium.Math.toDegrees(cartographic.longitude).toFixed(6);
+                var latitude = Cesium.Math.toDegrees(cartographic.latitude).toFixed(6);
+
+                var height = viewer.current.scene.globe.getHeight(cartographic).toFixed(6);
+                // console.log("经度:", longitude, "纬度:", latitude, "高度:", height);
+                height = Math.max(height, 0);
+
+                var cameraPosition = viewer.current.camera.positionCartographic;
+                var cameraAltitude = cameraPosition ? cameraPosition.height : 0;
+                setglocal({longitude: longitude, latitude: latitude, altitude: height, cameraAltitude: cameraAltitude});
+
+            }
+        }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+    }
+
   useEffect(() => {
     // 创建 Viewer 实例
     const viewerInstance = new Cesium.Viewer(viewerRef.current, {
@@ -1364,6 +1591,7 @@ const ViewerPage = () => {
     //     color: Cesium.Color.RED,
     //   }
     // });
+    getGlocal()
 
     return () => {
       entitiesChangedListener();
@@ -1399,6 +1627,21 @@ const ViewerPage = () => {
   const add3DLayer = (layerId, tileset) => {
     if (tileset && viewer.current) {
       const layer = viewer.current.scene.primitives.add(tileset);
+      let cartographic = Cesium.Cartographic.fromCartesian(tileset.boundingSphere.center);
+      let surface = Cesium.Cartesian3.fromRadians(cartographic.longitude,cartographic.latitude,0.0);
+
+    let offset = Cesium.Cartesian3.fromRadians(
+        cartographic.longitude,
+        cartographic.latitude,
+        -20.0
+    );
+
+    let translation = Cesium.Cartesian3.subtract(
+        offset,
+        surface,
+        new Cesium.Cartesian3()
+    );
+    tileset.modelMatrix = Cesium.Matrix4.fromTranslation(translation);
       layer.id = layerId;
       setLayers3D((prevLayers) => [...prevLayers, { id: layerId, layer: layer }]);
     }
@@ -1449,32 +1692,7 @@ const ViewerPage = () => {
     else{
       try {
         console.log(111112)
-        initTP();
-
         const tileset = await Cesium.Cesium3DTileset.fromUrl(tile.data_url);
-        const boundingSphere = tileset.boundingSphere;
-        const cartographic = Cesium.Cartographic.fromCartesian(boundingSphere.center);
-
-        // 采样地形高度
-        const terrainProvider = viewer.current.terrainProvider;
-        console.log(terrainProvider)
-        Cesium.sampleTerrainMostDetailed(terrainProvider, [cartographic]).then((updatedCartographics) => {
-            const terrainHeight = updatedCartographics[0].height;
-
-            const surface = Cesium.Cartesian3.fromRadians(
-                cartographic.longitude,
-                cartographic.latitude,
-                terrainHeight
-            );
-
-            const offset = Cesium.Cartesian3.subtract(
-                boundingSphere.center,
-                surface,
-                new Cesium.Cartesian3()
-            );
-
-            tileset.modelMatrix = Cesium.Matrix4.fromTranslation(offset);
-        });
         add3DLayer(tile.id, tileset);
       } catch (error) {
         console.error("Failed to load tileset:", error);
@@ -1782,6 +2000,8 @@ const ViewerPage = () => {
         style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
       ></div>
       <div id="toolbar">多 源 数 据 融 合</div>
+      <div id="lanlatlbar">经度: {glocal.longitude}, 纬度: {glocal.latitude}, 高度: {glocal.altitude}</div>
+      <div id="camerabar">相机高度: {glocal.cameraAltitude}</div>
     </div>
     </div>
 
