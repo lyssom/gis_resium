@@ -1,6 +1,6 @@
 import * as Cesium from "cesium";
 
-const measureLineSpace  = (viewer) => {
+const measureLineSpace  = (viewer, handleAddGeoJsonData) => {
     const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
     var positions = [];
     var poly = null;
@@ -8,6 +8,13 @@ const measureLineSpace  = (viewer) => {
     var cartesian = null;
     var floatingPoint;
     var measureIds = []
+
+    var geoJsonData = {
+        type: "FeatureCollection",
+        features: []
+    };
+
+    var temp_points = [];
     //监听移动事件
     handler.setInputAction(function (movement) {
         //移动结束位置
@@ -78,8 +85,40 @@ const measureLineSpace  = (viewer) => {
                 }
             });
             measureIds.push(floatingPoint.id);
-          });
 
+            const cartographic = Cesium.Cartographic.fromCartesian(positions[positions.length - 1]);
+            geoJsonData.features.push({
+                type: "Feature",
+                geometry: {
+                    type: "Point",
+                    coordinates: [
+                        Cesium.Math.toDegrees(cartographic.longitude),
+                        Cesium.Math.toDegrees(cartographic.latitude)]
+                },
+                properties: {
+                    distance: distance.toFixed(2),
+                    text: textDisance
+                }
+            });
+            temp_points.push([
+                Cesium.Math.toDegrees(cartographic.longitude),
+                Cesium.Math.toDegrees(cartographic.latitude)
+            ])
+
+            if (temp_points.length >= 2) {
+                geoJsonData.features.push({
+                    type: "Feature",
+                    geometry: {
+                        type: "LineString",
+                        coordinates: [temp_points[temp_points.length-2],temp_points[temp_points.length-1]]
+                    },
+                    properties: {
+                        totalDistance: distance.toFixed(2)
+                    }
+                });
+            }
+          });
+        //   console.log(geoJsonData)
         }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
     //监听双击事件
@@ -87,7 +126,8 @@ const measureLineSpace  = (viewer) => {
          handler.destroy();
          positions.pop(); //最后一个点无效
         //  bMeasuring = false;
-         viewer._container.style.cursor = "";
+        viewer._container.style.cursor = "";
+        handleAddGeoJsonData({"id": Cesium.createGuid(), "data": geoJsonData, "type": "空间距离"})
     },Cesium.ScreenSpaceEventType.RIGHT_CLICK);
 
     //绘线效果1
@@ -144,7 +184,7 @@ const measureLineSpace  = (viewer) => {
     }
   }
 
-   const measureGroundDistance = (viewer) => {
+   const measureGroundDistance = (viewer, handleAddGeoJsonData) => {
       viewer.scene.globe.depthTestAgainstTerrain = true;
   
       const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene._imageryLayerCollection);
@@ -155,6 +195,13 @@ const measureLineSpace  = (viewer) => {
       var cartesian = null;
       var floatingPoint;
       // tooltip.style.display = "block";
+
+      var geoJsonData = {
+        type: "FeatureCollection",
+        features: []
+    };
+
+    var temp_points = [];
   
       handler.setInputAction(function (movement) {
           // tooltip.style.left = movement.endPosition.x + 3 + "px";
@@ -195,8 +242,6 @@ const measureLineSpace  = (viewer) => {
                 positions.push(cartesian.clone());
             }
             positions.push(cartesian);
-            console.log(positions)
-            console.log(666888)
             getSpaceDistance(positions);
           }
       }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
@@ -207,6 +252,7 @@ const measureLineSpace  = (viewer) => {
           // viewer.entities.remove(floatingPoint);
           // tooltip.style.display = "none";
           viewer._container.style.cursor = "";
+          handleAddGeoJsonData({"id": Cesium.createGuid(), "data": geoJsonData, "type": "地表距离"})
       }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
   
       var PolyLinePrimitive = (function () {
@@ -298,6 +344,38 @@ const measureLineSpace  = (viewer) => {
                       // disableDepthTestDistance: Number.POSITIVE_INFINITY
                   }
               });
+
+              const cartographic = Cesium.Cartographic.fromCartesian(positions[positions.length - 1]);
+              geoJsonData.features.push({
+                  type: "Feature",
+                  geometry: {
+                      type: "Point",
+                      coordinates: [
+                          Cesium.Math.toDegrees(cartographic.longitude),
+                          Cesium.Math.toDegrees(cartographic.latitude)]
+                  },
+                  properties: {
+                      distance: distance.toFixed(2),
+                      text: textDisance
+                  }
+              });
+              temp_points.push([
+                  Cesium.Math.toDegrees(cartographic.longitude),
+                  Cesium.Math.toDegrees(cartographic.latitude)
+              ])
+  
+              if (temp_points.length >= 2) {
+                  geoJsonData.features.push({
+                      type: "Feature",
+                      geometry: {
+                          type: "LineString",
+                          coordinates: [temp_points[temp_points.length-2],temp_points[temp_points.length-1]]
+                      },
+                      properties: {
+                          totalDistance: distance.toFixed(2)
+                      }
+                  });
+              }
           }
       }
       //空间两点距离计算函数
@@ -359,7 +437,7 @@ const measureLineSpace  = (viewer) => {
   }
 
     //内部测量面积函数
-    const measureAreaSpace = (viewer) => {
+    const measureAreaSpace = (viewer, handleAddGeoJsonData) => {
     const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene._imageryLayerCollection);
     var positions = [];
     var tempPoints = [];
@@ -469,6 +547,29 @@ const measureLineSpace  = (viewer) => {
             }
         });
         viewer._container.style.cursor = "";
+
+        function cartesianToLonLatHeight(cartesian) {
+            const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
+            return [
+                Cesium.Math.toDegrees(cartographic.longitude),
+                Cesium.Math.toDegrees(cartographic.latitude),
+                cartographic.height
+            ];
+        }
+
+        const cartesianp = positions.map(cartesianToLonLatHeight);
+
+        const geoJsonData = {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    type: "Feature",
+                    geometry: { type: "Polygon", coordinates: [cartesianp.concat([cartesianp[0]])] }, // 闭合底面
+                    properties: {"name": "地表面积", "面积": textArea}
+                }]
+        };
+
+        handleAddGeoJsonData({"id": Cesium.createGuid(), "data": geoJsonData, "type": "地表面积"});
     }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
 
     var radiansPerDegree = Math.PI / 180.0; //角度转化为弧度(rad)

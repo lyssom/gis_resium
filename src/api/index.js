@@ -21,6 +21,13 @@ export const getSceneDetail = (params) => {
     })
 }
 
+export const getlicinfo = () => {
+    return axios.request({
+        url: '/get_lic_info',
+        method: 'get',
+    })
+}
+
 export const saveSceneDetail = (data) => {
     return axios.request({
         url: '/save_scene_detail',
@@ -68,6 +75,14 @@ export const getCzmlData = (url) => {
     })
 }
 
+
+export const deleteImageData = (data) => {
+    return axios.request({
+        url: '/delete_image_data',
+        method: 'post',
+        data
+    })
+}
 
 // export const getwindData = () => {
 //     return axios.request({

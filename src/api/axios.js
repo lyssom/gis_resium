@@ -32,48 +32,56 @@ class HttpRequest {
         return config
     }
 
+    // interceptors(instance) {
+    //     instance.interceptors.response.use(function (response) {
+    //       // 对响应数据做点什么
+    //       return response;
+    //     }, function (error) {
+    //       const status = error.response.status;
+
+
+    //       if (status === 200) {
+    //         // console.log(error, 'error')
+    //         console.log(6666666);
+    //         message.error('接口不存在');
+    //       } 
+    //       return Promise.reject(error);
+    //     });
+    // }
+
     interceptors(instance) {
-        // 添加请求拦截器
-        instance.interceptors.request.use(function (config) {
-          // 在发送请求之前做些什么
-          return config;
-        }, function (error) {
-          // 对请求错误做些什么
-          return Promise.reject(error);
-        });
-    
-        // 添加响应拦截器
-        instance.interceptors.response.use(function (response) {
+      instance.interceptors.response.use(function (response) {
           // 对响应数据做点什么
-          return response;
-        }, function (error) {
-          const status = error.response.status;
-
-
-          if (status === 404) {
-            // console.log(error, 'error')
-            message.error('接口不存在');
-          } else if (status === 403 || status === 401) {
-            // 403: 无权限，跳转到登录页
-            message.error('无权限，请重新登录');
-            // 清除本地的token并跳转到登录页
-            localStorage.removeItem('token');
-            // this.navigate('/login');
-            window.location.href = '/login';
-          } else {
-            // 其他错误
-            message.error(error.response?.data?.msg || '服务器错误');
+          console.log(666666666)
+          if (response.data === "Authorization required") {
+            window.location.href = '/lic'; // 或者使用你框架的路由跳转方法
           }
-          console.log(error, 'error')
-          // 对响应错误做点什么
+
+          return response;
+      }, function (error) {
+          const status = error.response.status;
+          const message = error.response.data
+          console.log(message)
+          console.log(666666666)
+  
+          // 判断响应码为200并且message为'Authorization required'
+          if (status === 200 && message === 'Authorization required') {
+              console.log('Unauthorized access, redirecting to login...');
+              // 重定向到授权界面
+              window.location.href = '/lic'; // 或者使用你框架的路由跳转方法
+          } else {
+              console.log('Unexpected error:', error);
+          }
+  
           return Promise.reject(error);
-        });
-    }
+      });
+  }
+  
 
     request(options) {
         options = {...this.getInsideConfig(), ...options}
         const instance = axios.create()
-        // this.interceptors(instance)
+        this.interceptors(instance)
         return instance(options)
     }
 }

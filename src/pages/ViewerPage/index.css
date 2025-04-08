@@ -17,6 +17,19 @@
   
 }
 
+
+#timebar {
+    position: absolute;
+    top: 0; /* 贴紧顶部 */
+    right: 100px; /* 贴紧右侧 */
+    /* background-color: rgba(11, 72, 116, 0.6); */
+    color: #b0bac2;
+    font-weight: bold;
+    font-size: 18px;
+    padding: 5px 40px 5px 20px; /* 上右下左的内边距 */
+}
+
+
 .fullSize {
 display: block;
 position: absolute;
@@ -59,13 +72,24 @@ height: 100%;
     color: #b0bac2 !important;
 }
 
-.ant-btn.css-dev-only-do-not-override-1kf000u.ant-btn-default.ant-btn-color-default.ant-btn-variant-outlined.ant-btn-sm.ant-btn-icon-only {
+/* .ant-btn.css-dev-only-do-not-override-1kf000u.ant-btn-default.ant-btn-color-default.ant-btn-variant-outlined.ant-btn-sm.ant-btn-icon-only {
     background-color: rgba(11, 72, 116, 0.0) !important;
-}
+} */
 
 .anticon.anticon-aim svg path {
     fill: #b0bac2 !important;
 }
+
+.anticon.anticon-delete svg path {
+    fill: #b0bac2 !important;
+    
+}
+.anticon.anticon-delete {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 
 .ant-checkbox-inner {
     background-color: rgba(11, 72, 116, 0.0) !important;
@@ -158,3 +182,70 @@ height: 100%;
 }
 
 
+
+#toolbar_hover {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 33%;
+    height: 50px; /* 控制工具栏高度 */
+    background-color: rgba(11, 72, 116, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center; /* 居中对齐 */
+    padding: 0 10px; /* 添加左右内边距 */
+    /* clip-path: polygon(10% 0, 90% 0, 100% 100%, 0% 100%); */
+    border-radius:20px 20px 0 0 ; /* 左侧倒角 */
+    gap: 60px; /* 增大按钮之间的间距 */
+}
+
+#toolbar_hover .ant-btn {
+    width: 40px;  /* 让按钮宽度等于工具栏高度 */
+    height: 40px; /* 让按钮高度等于工具栏高度 */
+    aspect-ratio: 1 / 1; /* 保证按钮始终是正方形 */
+    text-align: center;
+    border-radius: 5px; /* 可以调整圆角大小 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+
+.ant-popover-content {
+    background-color: rgba(11, 72, 116, 0.6);
+    color: #b0bac2 !important; /* 文字颜色 */
+}
+
+.ant-popover-title {
+    color: #b0bac2 !important;
+}
+
+.ant-popover-inner {
+    background-color: rgba(11, 72, 116, 0.0) !important; /* 确保内层也透明 */
+    color: #b0bac2 !important;
+    border: none !important; /* 去除边框 */
+    box-shadow: none !important; /* 去除阴影 */
+}
+
+.ant-popover-arrow {
+    display: none !important; /* 隐藏 Popover 小箭头 */
+}
+
+
+#toolbar_left {
+    position: absolute;
+    top: 50%; /* 让工具栏位于屏幕左侧中间 */
+    left: 0; /* 靠近左侧 */
+    transform: translateY(-50%); /* 使其垂直居中 */
+    width: 50px; /* 控制工具栏宽度 */
+    height: 150px; /* 根据内容调整高度 */
+    background-color: rgba(11, 72, 116, 0.6);
+    display: flex;
+    flex-direction: column; /* 让子元素垂直排列 */
+    align-items: center; /* 水平居中对齐 */
+    justify-content: center; /* 垂直居中对齐 */
+    padding: 10px 0; /* 上下内边距 */
+    border-radius:0 20px 20px 0 ; /* 左侧倒角 */
+    gap: 20px; /* 按钮之间的间距 */
+}

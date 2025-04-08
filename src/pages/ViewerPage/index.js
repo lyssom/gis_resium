@@ -4,8 +4,11 @@ import { Col, InputNumber, Row, Slider, Space } from 'antd';
 
 import { Editor,loader  } from "@monaco-editor/react";
 import { MenuUnfoldOutlined } from '@ant-design/icons';
-import { Button, Drawer, FloatButton, List, Typography, Flex, Splitter, Modal, Checkbox, Switch, Divider, Collapse, Radio, Form, Input, Select } from 'antd';
-import { AimOutlined, DeleteOutlined, LineOutlined, PlusSquareOutlined, EnvironmentOutlined, DownloadOutlined } from '@ant-design/icons';
+import { Button, Drawer, FloatButton, List, Typography, Flex, Splitter, Modal, Checkbox, Switch, Divider, Collapse, Radio, Form, Input, Select,Popover } from 'antd';
+import { AimOutlined, DeleteOutlined, ToolOutlined, PlusSquareOutlined, EnvironmentOutlined, DownloadOutlined,ColumnWidthOutlined,AppstoreOutlined,InboxOutlined,
+  BlockOutlined, FlagOutlined
+
+} from '@ant-design/icons';
 import "./index.css"
 import excavateTerrain from "./excavateTerrain.js"
 import {load, clears } from "./line_of_sight.js"
@@ -18,7 +21,7 @@ import axios from '../../api/axios'
 import {measureLineSpace, measureGroundDistance, measureAreaSpace, altitude} from "./measureTool.js"
 
 
-import {getSceneDetail, saveSceneDetail, getSceneList, getImageDatas, saveImageData, getExcavateResource, getCzmlData} from '../../api/index.js'
+import {getSceneDetail, saveSceneDetail, getSceneList, getImageDatas, saveImageData, getExcavateResource, getCzmlData, deleteImageData} from '../../api/index.js'
 
 const ViewerPage = () => {
   loader.config({
@@ -36,6 +39,9 @@ const ViewerPage = () => {
   const [isModalImportOpen, setIsModalImportOpen] = useState(false);
   const [mr, setmr] = useState([]);
   const [isModalExcavateOpen, setIsModalExcavateOpen] = useState(false);
+  const [isModalCirlceOpen, setisModalCirlceOpen] = useState(false);
+  const [isModalPolygonOpen, setIsModalPolygonOpen] = useState(false);
+  const [polygonPosition, setpolygonPosition] = useState(0);
   const [isModalImportDataOpen, setIsModalImportDataOpen] = useState(false);
   const [isModalLocationOpen, setIsModalLocationOpen] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -70,6 +76,16 @@ const ViewerPage = () => {
   const [exportSenceName, setExportSenceName] = useState('')
 
   const [excavateHight, setExcavateHight] = useState(0)
+  const [cylinderHight, setcylinderHight] = useState(0)
+  const [polygonHight, setpolygonHight] = useState(0)
+  const [cylinderrr, setCylinderrr] = useState({
+    rr: 0,
+    midpoint: 0
+  }) 
+
+  const [geoJsonDataList, setGeoJsonDataList] = useState([]);
+
+  const [codeSenceList, setcodeSenceList] = useState([]);
 
   const [coordinates, setCoordinates] = useState({
     longitude: '',
@@ -83,7 +99,9 @@ const ViewerPage = () => {
     dataUrl: '',
     longitude: '',
     latitude: '',
-    altitude: ''
+    altitude: '',
+    width: '',
+    height: '',
   });
 
   const [glocal, setglocal] = useState(
@@ -105,6 +123,10 @@ const ViewerPage = () => {
   const handleExcavateHightChange = (e) => {
     setExcavateHight(e.target.value)
   }
+
+  const handlecylinderHightChange = (e) => setcylinderHight(e.target.value)
+
+  const handlePolygonHightChange = (e) => setpolygonHight(e.target.value)
 
   const handleImportDataChange = (e) => {
     setimportDataCoordinates({
@@ -169,6 +191,33 @@ const ViewerPage = () => {
   const handleLjz = () => {
     setLjzValue(!LjzValue);
   };
+
+const [gtime, setgtime] = useState(getCurrentTime());
+
+
+
+  function getCurrentTime() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const hours = String(now.getHours()).padStart(2, "0");
+    const minutes = String(now.getMinutes()).padStart(2, "0");
+    const seconds = String(now.getSeconds()).padStart(2, "0");
+
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
+
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+        setgtime(getCurrentTime());
+    }, 1000);
+
+    return () => clearInterval(interval); // 组件卸载时清理定时器
+}, []);
+
 
 
   const fly2Tiananmen = () => {
@@ -264,10 +313,12 @@ const ViewerPage = () => {
     };
 }
 
-function prismToGeoJSON(entity, heightOffset = 100) {
+
+function prismToGeoJSON(entity) {
   if (!entity.polygon || !entity.polygon.hierarchy) return null;
 
   // 获取底面点
+  const heightOffset = Number(entity.polygon.extrudedHeight._value);
   const positions = entity.polygon.hierarchy.getValue(Cesium.JulianDate.now()).positions;
   if (positions.length < 3) return null; // 确保至少是三角形（否则无法构成柱体）
 
@@ -284,7 +335,6 @@ function prismToGeoJSON(entity, heightOffset = 100) {
   const bottomPoints = positions.map(cartesianToLonLatHeight);
   const topPoints = bottomPoints.map(p => [p[0], p[1], p[2] + heightOffset]); // 计算顶部点
 
-  // 生成侧面
   function generateSide(p1, p2, p3, p4) {
       return {
           type: "Feature",
@@ -308,18 +358,26 @@ function prismToGeoJSON(entity, heightOffset = 100) {
       features: [
           {
               type: "Feature",
-              geometry: { type: "Polygon", coordinates: [bottomPoints.concat([bottomPoints[0]])] }, // 闭合底面
+              geometry: {
+                  type: "Polygon",
+                  coordinates: [bottomPoints.concat([bottomPoints[0]])] // 闭合底面
+              },
               properties: { id: entity.id, name: "Prism Bottom" }
           },
           {
               type: "Feature",
-              geometry: { type: "Polygon", coordinates: [topPoints.concat([topPoints[0]])] }, // 闭合顶部
+              geometry: {
+                  type: "Polygon",
+                  coordinates: [topPoints.concat([topPoints[0]])] // 闭合顶部
+              },
               properties: { id: entity.id, name: "Prism Top" }
           },
           ...sides
       ]
   };
 }
+
+
 
 
 
@@ -416,67 +474,85 @@ function prismToGeoJSON(entity, heightOffset = 100) {
         billboard: {
             image: tile.data_url,
             scale: 1,
-            width: 32,
-            height: 32,
+            width: 128,
+            height: 128,
         },
     });
     viewer.current.entities.add(ent)
   }
 
   const loadCzml = (tile) => {
-    console.log(111)
-    var czmlDataSource = new Cesium.CzmlDataSource();
-    viewer.current.dataSources.add(czmlDataSource);
-    console.log(tile.data_url)
+
+    let czmldata = new Cesium.CzmlDataSource();
+    // czmldata.load('http://127.0.0.1:8000/ter_analysis/air1.czml')
+    czmldata.load(tile.data_url)
+    .then((dataSource) => {
+        viewer.current.dataSources.add(dataSource);
+        let entity = dataSource.entities.getById('airplane');
+        viewer.current.trackedEntity = entity;
+        viewer.current.clock.shouldAnimate = true;
+
+    })
+    .catch((error) => {
+        console.error("CZML 加载失败:", error);
+    });
 
 
-    let czmldata = new Cesium.CzmlDataSource.load('http://127.0.0.1:8000/ter_analysis/point.czml');
-    viewer.current.dataSources.add(czmldata)
-    viewer.current.clock.shouldAnimate = true;
-    // getCzmlData(tile.data_url).then(res => {
-    //   const { data } = res;
-    //   czmlDataSource.load(data);
-    //   console.log(data)
+  }
 
-    //   czmlDataSource.load(data).then(function() {
-    //     console.log('CZML Data Loaded');
-    //   })
-      
-    // })
-      
+
+  const handleDeleteData = (dataId, type) => {
+    
+    const jsonOutput = JSON.stringify(
+          {"data_type": type, "data_id":dataId},
+          null, 2);
+    deleteImageData({'data': JSON.parse(jsonOutput)}).then(res => {})
+    getImageDatas().then(res => {
+      const { data } = res;
+      console.log(data)
+      setTerrainList(data.terrain_data);
+      setTilesList(data.tiles_data);
+      setWmsList(data.wms_data);
+      setPhotoList(data.photo_data);
+      setCzmlList(data.czml_data);
+    })
   }
 
   const dataload_tool = [
       <div>
         <Divider>地形</Divider>
-        <Radio.Group>
-  <List
-    dataSource={terrainList}
-    split={false}
-    renderItem={(item) => (
-      <div className="container">
-        <List.Item style={{ padding: 0 }} key={item.id}>
-          <Radio
-            value={item}
-            checked={selectedTerrainId === item.id}
-            onChange={handleSelectTerrainChange}
-          />
-          {item.data_name}
-        </List.Item>
-        {item.lon && item.lat && (
-          <div style={{ marginLeft: '160px' }}>
-            <Button
-              type="default"
-              size="small"
-              icon={<AimOutlined />}
-              onClick={() => fly2Loc(item.lon, item.lat, item.alt)}
-            />
-          </div>
-        )}
-      </div>
-    )}
-  />
-</Radio.Group>
+        <List
+          dataSource={terrainList}
+          split={false}
+          renderItem={(item) => (
+            <div className="container">
+              <List.Item style={{ padding: 5, marginBottom: 5 }} key={item.id}>
+                <Radio
+                  value={item}
+                  checked={selectedTerrainId === item.id}
+                  onChange={handleSelectTerrainChange}
+                />
+                {item.data_name}
+              </List.Item>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  {item.lon && item.lat && (
+                    <Button
+                      type="default"
+                      size="small"
+                      icon={<AimOutlined />}
+                      onClick={() => fly2Loc(item.lon, item.lat, item.alt)}
+                    />
+                  )}
+                  <Button
+                    type="default"
+                    size="small"
+                    icon={<DeleteOutlined />}
+                    onClick={() => handleDeleteData(item.id, 'terrain')} // 删除按钮点击事件
+                  />
+                </div>
+            </div>
+          )}
+        />
 
         <Divider>图层</Divider>
         {tilesList.length > 0 && (<List
@@ -484,20 +560,26 @@ function prismToGeoJSON(entity, heightOffset = 100) {
         split={false}
         renderItem={(item, index) => (
           <div className="container">
-        <List.Item style={{ padding: 0 }} key={index}>
+        <List.Item style={{ padding: 5}} key={index}>
         <Checkbox defaultChecked={false} onChange={() =>loadTileset(item)}/><Divider type="vertical"/>
           {item.data_name} 
         </List.Item> 
-        {item.lon && item.lat && (
-          <div>
-            <Button 
-              type="default" 
-              size="small" 
-              icon={<AimOutlined />} 
-              onClick={() =>fly2Loc(item.lon, item.lat, item.alt)}
+        <div style={{ display: "flex", gap: "8px" }}>
+            {item.lon && item.lat && (
+              <Button
+                type="default"
+                size="small"
+                icon={<AimOutlined />}
+                onClick={() => fly2Loc(item.lon, item.lat, item.alt)}
+              />
+            )}
+            <Button
+              type="default"
+              size="small"
+              icon={<DeleteOutlined />}
+              onClick={() => handleDeleteData(item.id, 'tiles')} // 删除按钮点击事件
             />
           </div>
-        )}
         </div>
         )}
         />)}
@@ -506,20 +588,26 @@ function prismToGeoJSON(entity, heightOffset = 100) {
         split={false}
         renderItem={(item, index) => (
           <div className="container">
-        <List.Item style={{ padding: 0 }} key={index}>
+        <List.Item style={{ padding: 5}} key={index}>
         <Checkbox defaultChecked={false} onChange={() =>loadWMS(item)}/><Divider type="vertical"/>
           {item.data_name} 
         </List.Item> 
-        {item.lon && item.lat && (
-          <div>
-            <Button 
-              type="default" 
-              size="small" 
-              icon={<AimOutlined />} 
-              onClick={() =>fly2Loc(item.lon, item.lat, item.alt)}
+        <div style={{ display: "flex", gap: "8px" }}>
+            {item.lon && item.lat && (
+              <Button
+                type="default"
+                size="small"
+                icon={<AimOutlined />}
+                onClick={() => fly2Loc(item.lon, item.lat, item.alt)}
+              />
+            )}
+            <Button
+              type="default"
+              size="small"
+              icon={<DeleteOutlined />}
+              onClick={() => handleDeleteData(item.id, 'WMS')} // 删除按钮点击事件
             />
           </div>
-        )}
         
         </div>
         )}
@@ -530,20 +618,26 @@ function prismToGeoJSON(entity, heightOffset = 100) {
         split={false}
         renderItem={(item, index) => (
           <div className="container">
-        <List.Item style={{ padding: 0 }} key={index}>
+        <List.Item style={{ padding: 5}} key={index}>
         <Checkbox defaultChecked={false} onChange={() =>loadPhoto(item)}/><Divider type="vertical"/>
           {item.data_name} 
         </List.Item> 
-        {item.lon && item.lat && (
-          <div>
-            <Button 
-              type="default" 
-              size="small" 
-              icon={<AimOutlined />} 
-              onClick={() =>fly2Loc(item.lon, item.lat, item.alt)}
+        <div style={{ display: "flex", gap: "8px" }}>
+            {item.lon && item.lat && (
+              <Button
+                type="default"
+                size="small"
+                icon={<AimOutlined />}
+                onClick={() => fly2Loc(item.lon, item.lat, item.alt)}
+              />
+            )}
+            <Button
+              type="default"
+              size="small"
+              icon={<DeleteOutlined />}
+              onClick={() => handleDeleteData(item.id, 'photo')} // 删除按钮点击事件
             />
           </div>
-        )}
         
         </div>
         )}
@@ -553,20 +647,26 @@ function prismToGeoJSON(entity, heightOffset = 100) {
         split={false}
         renderItem={(item, index) => (
           <div className="container">
-        <List.Item style={{ padding: 0 }} key={index}>
+        <List.Item style={{ padding: 5 }} key={index}>
         <Checkbox defaultChecked={false} onChange={() =>loadCzml(item)}/><Divider type="vertical"/>
           {item.data_name} 
         </List.Item> 
-        {item.lon && item.lat && (
-          <div>
-            <Button 
-              type="default" 
-              size="small" 
-              icon={<AimOutlined />} 
-              onClick={() =>fly2Loc(item.lon, item.lat, item.alt)}
+        <div style={{ display: "flex", gap: "8px" }}>
+            {item.lon && item.lat && (
+              <Button
+                type="default"
+                size="small"
+                icon={<AimOutlined />}
+                onClick={() => fly2Loc(item.lon, item.lat, item.alt)}
+              />
+            )}
+            <Button
+              type="default"
+              size="small"
+              icon={<DeleteOutlined />}
+              onClick={() => handleDeleteData(item.id, 'czml')} // 删除按钮点击事件
             />
           </div>
-        )}
         
         </div>
         )}
@@ -603,7 +703,7 @@ function prismToGeoJSON(entity, heightOffset = 100) {
         ent = new Cesium.Entity({
             position: Cesium.Cartesian3.fromDegrees(longitude, latitude, 2000),
             billboard: {
-                image: 'http://webapi.amap.com/theme/v1.3/markers/n/mark_b.png',
+                image: 'http://127.0.0.1:8000/static/mark_b.png',
                 scale: 1,
             },
         });
@@ -832,6 +932,81 @@ function prismToGeoJSON(entity, heightOffset = 100) {
 
     }
 
+    const traceflow = () => {
+      let start = Cesium.JulianDate.fromDate(new Date());
+      start = Cesium.JulianDate.addHours(start, 8, new Cesium.JulianDate());
+      const stop = Cesium.JulianDate.addSeconds(start, 360, new Cesium.JulianDate());
+    
+      viewer.clock.startTime = start.clone();
+      viewer.clock.stopTime = stop.clone();
+      viewer.clock.currentTime = start.clone();
+      viewer.clock.clockRange = Cesium.ClockRange.LOOP_STOP;
+      viewer.clock.multiplier = 10;
+    
+      const position = new Cesium.SampledPositionProperty();
+      const startPos = Cesium.Cartesian3.fromDegrees(-90, 20, 10000);
+      const endPos = Cesium.Cartesian3.fromDegrees(-120, 30, 3000000);
+    
+      position.addSample(start, startPos);
+      position.addSample(stop, endPos);
+    
+      // **计算朝上方向的四元数**
+      const hpr = new Cesium.HeadingPitchRoll(180, Cesium.Math.toRadians(90), 0);
+      const fixedFrameTransform = Cesium.Transforms.eastNorthUpToFixedFrame(startPos);
+      const quaternion = Cesium.Transforms.headingPitchRollQuaternion(startPos, hpr);
+    
+      const entity = viewer.entities.add({
+          availability: new Cesium.TimeIntervalCollection([new Cesium.TimeInterval({ start, stop })]),
+          position: position,
+          orientation: quaternion, // **手动设置朝向**
+          model: {
+              uri: 'http://127.0.0.1:8000/static/airplane.glb',
+              minimumPixelSize: 32
+          },
+          label: {
+              font: '10pt monospace',
+              outlineWidth: 2,
+              fillColor: Cesium.Color.BLUE,
+              showBackground: true,
+              pixelOffset: new Cesium.Cartesian2(40, 20),
+              backgroundColor: Cesium.Color.RED
+          },
+          path: {
+              show: false,
+              resolution: 1,
+              material: new Cesium.PolylineGlowMaterialProperty({
+                  glowPower: 0.1,
+                  color: Cesium.Color.PINK
+              }),
+              width: 5
+          }
+      });
+    
+      viewer.clock.shouldAnimate = true;
+      viewer.trackedEntity = entity;
+    }
+
+
+    function createExtrudedPolygon() {
+      handlePolygonCancel();
+      const positions = polygonPosition
+      const polygonType = positions.length === 4 ? "四棱柱" : "五棱柱";
+        viewer.current.entities.add({
+          position: positions[0],
+            name: polygonType ,
+            polygon: {
+                hierarchy: new Cesium.PolygonHierarchy(positions),
+                material: Cesium.Color.RED.withAlpha(0.5), // 半透明红色填充
+                outline: true,
+                outlineColor: Cesium.Color.BLACK,
+                extrudedHeight: polygonHight
+            },
+        });
+
+        viewer.current.zoomTo(viewer.current.entities);
+        setpolygonHight(0);
+    }
+    
     const createPolygon = () => {
       const positions = [];
 
@@ -861,29 +1036,37 @@ function prismToGeoJSON(entity, heightOffset = 100) {
           // 如果达到 4 个点（四棱柱）或 5 个点（五棱柱），创建柱体
           if (positions.length === 4 || positions.length === 5) {
               handler.setInputAction(function () {
-                createExtrudedPolygon();
+                // createExtrudedPolygon();
+                setIsModalPolygonOpen(true)
+                setpolygonPosition(positions)
                 handler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK); // 停止监听点击
             }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
           }
       }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
-      // 创建柱体
-      function createExtrudedPolygon() {
-        const polygonType = positions.length === 4 ? "四棱柱" : "五棱柱";
-          viewer.current.entities.add({
-            position: positions[0],
-              name: polygonType ,
-              polygon: {
-                  hierarchy: new Cesium.PolygonHierarchy(positions),
-                  material: Cesium.Color.RED.withAlpha(0.5), // 半透明红色填充
-                  outline: true,
-                  outlineColor: Cesium.Color.BLACK,
-                  extrudedHeight: 50000, // 设置柱体高度（单位：米）
-              },
-          });
+    }
 
-          viewer.current.zoomTo(viewer.current.entities);
-      }
+    const HandelcreateCylinder = () => {
+      handleCylinderCancel();
+      const cartesian = new Cesium.Cartesian3(cylinderrr.midpoint.x, cylinderrr.midpoint.y, cylinderrr.midpoint.z)
+      const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
+      const cylinderEntity = new Cesium.Entity({
+        position: Cesium.Cartesian3.fromDegrees(
+          Cesium.Math.toDegrees(cartographic.longitude),  // 经度
+          Cesium.Math.toDegrees(cartographic.latitude),  // 纬度
+          0),
+        name: "圆柱",
+        cylinder: {
+            material: Cesium.Color.ORCHID,
+            length:Number(cylinderHight),  // 设置圆柱体的高度（两点间的距离）
+            topRadius: cylinderrr.rr,  // 设置圆柱体的顶部半径
+            bottomRadius: cylinderrr.rr,  // 设置圆柱体的底部半径
+            outline: true,
+            outlineColor: Cesium.Color.LAWNGREEN
+          }
+        });
+      viewer.current.entities.add(cylinderEntity);
+      setcylinderHight(0)
     }
 
 
@@ -907,20 +1090,9 @@ function prismToGeoJSON(entity, heightOffset = 100) {
                     const bottomRadius = rr;  // 固定的底部半径
                     console.log("Midpoint:", midpoint);
                     console.log("Distance:", Cesium.Cartesian3.distance(startPoint, endPoint));
-                    const cylinderEntity = new Cesium.Entity({
-                        position: midpoint,
-                        name: "圆柱",
-                        cylinder: {
-                            material: Cesium.Color.ORCHID,
-                            length: 100000,  // 设置圆柱体的高度（两点间的距离）
-                            topRadius: topRadius,  // 设置圆柱体的顶部半径
-                            bottomRadius: bottomRadius,  // 设置圆柱体的底部半径
-                            outline: true,
-                            outlineColor: Cesium.Color.LAWNGREEN
-                        }
-                    });
-        
-                    viewer.current.entities.add(cylinderEntity);
+                    setCylinderrr({rr:rr, midpoint: midpoint})
+                    setisModalCirlceOpen(true);
+
                     handler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK);
                 }
             } else {
@@ -1114,7 +1286,7 @@ function prismToGeoJSON(entity, heightOffset = 100) {
       if (viewer.current) {
         var startPoint, endPoint;
         viewer.current.scene.globe.depthTestAgainstTerrain = true;
-        initTP();
+        // initTP();
         var handler = new Cesium.ScreenSpaceEventHandler(viewer.current.canvas);
         handler.setInputAction(function (click) {
             var windowPosition = click.position;
@@ -1150,16 +1322,27 @@ function prismToGeoJSON(entity, heightOffset = 100) {
       }
     }
 
+    const handleAddGeoJsonData = (newGeoJsonData) => {
+      // 将新数据添加到现有数据列表中
+      setGeoJsonDataList((prevList) => [...prevList, newGeoJsonData]);
+  };
+
+  const handleAddCodeSenceData = (newData) => {
+    // 将新数据添加到现有数据列表中
+    setcodeSenceList((prevList) => [...prevList, newData]);
+    console.log(codeSenceList);
+  };
+
     const handleMeasure = () => {
-      measureLineSpace(viewer.current);
+      measureLineSpace(viewer.current, handleAddGeoJsonData);
     }
 
     const handlegroundMeasure = () => {
-      measureGroundDistance(viewer.current);
+      measureGroundDistance(viewer.current, handleAddGeoJsonData);
     }
 
     const handleAreaMeasure = () => {
-      measureAreaSpace(viewer.current);
+      measureAreaSpace(viewer.current, handleAddGeoJsonData);
     }
 
     const handlaltitudeMeasure = () => {
@@ -1172,10 +1355,8 @@ function prismToGeoJSON(entity, heightOffset = 100) {
       <Button onClick={handleMeasure}>空间距离</Button>
       <Button onClick={handlegroundMeasure}>地表距离</Button>
       <Button onClick={handleAreaMeasure}>地表面积</Button>
-      </Space>,
-      <Space>
-        <Button onClick={handlExcavate}>地形开挖</Button>
-        <Button onClick={handlelineofsight}>通视/遮蔽</Button>
+      <Button onClick={handlExcavate}>地形开挖</Button>
+      <Button onClick={handlelineofsight}>通视/遮蔽</Button>
       </Space>
       
     ];
@@ -1294,15 +1475,37 @@ function prismToGeoJSON(entity, heightOffset = 100) {
       
     }
 
+    const handleDownloadMearsureRes = (resID) => {
+      const res = geoJsonDataList.find(item => item.id === resID);
+      console.log(res)
+
+      const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "entity.geojson";
+      a.click();
+    }
+
     const handleImportDataSubmit = () => {
-      const { dataType, dataName, dataUrl, longitude, latitude, altitude } = importDatacoordinates;
+      const { dataType, dataName, dataUrl, longitude, latitude, altitude, height, width } = importDatacoordinates;
       const lon = parseFloat(longitude);
       const lat = parseFloat(latitude);
       const alt = parseFloat(altitude);
+      const h = parseFloat(height);
+      const w = parseFloat(width);
+      let jsonOutput
 
-      const jsonOutput = JSON.stringify(
-        {"data_type": dataType, "data_name":dataName, "data_url":dataUrl, "lon":lon, "lat":lat, 'alt': alt},
-        null, 2);
+      if (dataType == "photo") {
+        jsonOutput = JSON.stringify(
+          {"data_type": dataType, "data_name":dataName, "data_url":dataUrl, "lon":lon, "lat":lat, 'alt': alt, "width": w, "height": h},
+          null, 2);
+
+      } else {
+        jsonOutput = JSON.stringify(
+          {"data_type": dataType, "data_name":dataName, "data_url":dataUrl, "lon":lon, "lat":lat, 'alt': alt},
+          null, 2);
+      }
 
       saveImageData({'data': JSON.parse(jsonOutput)}).then(res => {
       })
@@ -1327,7 +1530,7 @@ function prismToGeoJSON(entity, heightOffset = 100) {
       handleImportDataCancel() 
     }
 
-  
+    
     const highLevelTool = [
     <div>
           <Space
@@ -1365,45 +1568,90 @@ function prismToGeoJSON(entity, heightOffset = 100) {
       <div>
         <Divider>实体</Divider>
         <List
-      dataSource={entities}
-      renderItem={(item, index) => (
-        <List.Item key={index}>
-          <Typography.Text mark></Typography.Text>  {item._name ? item._name +'_'+ index : 'entity_' + index}
+        locale={{ emptyText: "暂无数据" }}
+          dataSource={entities}
+          renderItem={(item, index) => (
+            <List.Item key={index} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              {(item._name === "四棱柱" || item._name === "五棱柱" || item._name === "圆柱") && (
+                <>
+                  <Typography.Text>{item._name ? item._name + '_' + index : 'entity_' + index}</Typography.Text>
+                  <div>
+                    <Button
+                      type="default"
+                      size="small"
+                      icon={<DownloadOutlined />}
+                      onClick={() => handleDownloadEntitiy(item.id)}
+                    />
+                    <Button
+                      type="default"
+                      size="small"
+                      icon={<DeleteOutlined />}
+                      onClick={() => handleDeleteEntitiy(item.id)}
+                      style={{ marginLeft: 8 }}
+                    />
+                  </div>
+                </>
+              )}
+            </List.Item>
+          )}
+        />
 
-          {(item._name == "四棱柱" || item._name == "五棱柱"|| item._name == "圆柱") && (<Button
-            type="text"
-            icon={<DownloadOutlined />}
-            onClick={() => handleDownloadEntitiy(item.id)} // 删除按钮点击事件
-            style={{ marginLeft: 'auto' }} // 确保按钮在右侧
-          />)}
-          <Button
-            type="text"
-            icon={<DeleteOutlined />}
-            onClick={() => handleDeleteEntitiy(item.id)} // 删除按钮点击事件
-            style={{ marginLeft: 'auto' }} // 确保按钮在右侧
-          />
-        </List.Item>
-      )}
-    />
     <Divider>图层</Divider>
-            <List
-      dataSource={layers}
+      {layers.length > 0 || codeSenceList.length > 0 ? (
+        <>
+          {layers.length > 0 && (<List
+            dataSource={layers}
+            locale={{ emptyText: "暂无数据" }}
+            renderItem={(item, index) => (
+              <List.Item key={index}>
+                <Typography.Text mark></Typography.Text>  
+                {item.layer.name ? item.layer.name : 'layer_' + index}
+              </List.Item>
+            )}
+          />)}
+          
+          {codeSenceList.length > 0 && (<List
+            dataSource={codeSenceList}
+            locale={{ emptyText: "暂无数据" }}
+            renderItem={(item, index) => (
+              <List.Item key={index}>
+                <Typography.Text mark></Typography.Text>  {item}
+              </List.Item>
+            )}
+          />)}
+        </>
+      ) : (
+        <List
+        dataSource={[]}
+        locale={{ emptyText: "暂无数据" }}
+      />
+      )}
+
+    
+    
+    <Divider>量算结果</Divider>
+    <List
+      dataSource={geoJsonDataList}
+      locale={{ emptyText: "暂无数据" }}
       renderItem={(item, index) => (
-        <List.Item key={index}>
-          <Typography.Text mark></Typography.Text>  {item.layer.name ? item.layer.name : 'layer_' + index}
+        <List.Item key={index}
+      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: 8 }}
+      >
+          <Typography.Text mark></Typography.Text>  {item.type + "_"+ index}
           <Button
-            type="text"
-            icon={<DeleteOutlined />}
-            onClick={() => handleDeleteEntitiy(item.id)} // 删除按钮点击事件
+            type="default"
+            size="small"
+            icon={<DownloadOutlined />}
+            onClick={() => handleDownloadMearsureRes(item.id)} // 删除按钮点击事件
             style={{ marginLeft: 'auto' }} // 确保按钮在右侧
           />
         </List.Item>
       )}
     />
-        <div className="container">
+        {/* <div className="container">
         <Row><Button onClick={showImportModal}>导入场景</Button></Row>
         <Row><Button onClick={showModal}>导出场景</Button></Row>
-        </div>
+        </div> */}
       </div>
       ];
 
@@ -1420,6 +1668,14 @@ function prismToGeoJSON(entity, heightOffset = 100) {
 
   const handleExcavateCancel = () => {
     setIsModalExcavateOpen(false);
+  }
+
+  const handleCylinderCancel = () => {
+    setisModalCirlceOpen(false);
+  }
+
+  const handlePolygonCancel = () => {
+    setIsModalPolygonOpen(false);
   }
 
   const handlestartExcavate = () => {
@@ -1569,12 +1825,12 @@ function prismToGeoJSON(entity, heightOffset = 100) {
     });
 
 
-    var baseLayer = viewerInstance.imageryLayers.get(0);
-    viewerInstance.imageryLayers.remove(baseLayer);
-    var xyz = new Cesium.TileMapServiceImageryProvider({
-      "url": 'http://127.0.0.1:8000/base_map/{z}/{x}/{y}.png'
-    })
-    viewerInstance.imageryLayers.addImageryProvider(xyz)
+    // var baseLayer = viewerInstance.imageryLayers.get(0);
+    // viewerInstance.imageryLayers.remove(baseLayer);
+    // var xyz = new Cesium.TileMapServiceImageryProvider({
+    //   "url": 'http://127.0.0.1:8000/base_map/{z}/{x}/{y}.png'
+    // })
+    // viewerInstance.imageryLayers.addImageryProvider(xyz)
     
     viewer.current = viewerInstance;
     viewer.current.cesiumWidget.creditContainer.style.display = "none";
@@ -1717,11 +1973,35 @@ function prismToGeoJSON(entity, heightOffset = 100) {
       const cviewer = viewer.current;
       const userFunction = new Function("viewer", "Cesium", "axios", "WindLayer", code);
       userFunction(cviewer, Cesium, axios, WindLayer);
+
+      let modelName
+      const matches = [...code.matchAll(/https?:\/\/[^\s'"]+\/([^\/'"]+)\.[a-zA-Z0-9]+/g)];
+
+      if (matches.length > 0) {
+        modelName = matches[matches.length - 1][1];  // 提取最后一个文件名（不含扩展名）
+        // console.log("最后一个文件名:", modelName);
+      } else {
+        modelName = ""
+        console.log("未找到文件名");
+      }
+
+      handleAddCodeSenceData(modelName);
+
+
     } catch (error) {
       alert("代码运行错误：" + error.message);
     }
   };
 
+
+  const saveCode = () => {
+    const blob = new Blob([code], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "code.js";
+    a.click();
+  }
   const dataload_obj = [
     {
       key: '1',
@@ -1794,7 +2074,6 @@ function prismToGeoJSON(entity, heightOffset = 100) {
       setsceneLists(res.data)
     })
   }, []);
-  
 
 
   return (
@@ -1825,6 +2104,7 @@ function prismToGeoJSON(entity, heightOffset = 100) {
       theme="vs-dark"
       />
       <Button onClick={runCode} type="perimary">运行代码</Button>
+      <Button onClick={saveCode} type="perimary">保存代码</Button>
       <Modal title="场景导出" open={isModalOpen} onOk={handleExport} onCancel={handleCancel}>
       <Space direction="vertical" style={{ width: '100%' }}>
       <List
@@ -1880,6 +2160,26 @@ function prismToGeoJSON(entity, heightOffset = 100) {
             name="excavate_hight"
             value={excavateHight}
             onChange={handleExcavateHightChange}
+          />  
+        </Space>
+      </Modal>
+      <Modal title="圆柱体高度配置" open={isModalCirlceOpen} onOk={HandelcreateCylinder} onCancel={handleCylinderCancel}>
+        <Space>
+          <p>圆柱体高度</p>
+          <Input
+            name="excavate_hight"
+            value={cylinderHight}
+            onChange={handlecylinderHightChange}
+          />  
+        </Space>
+      </Modal>
+      <Modal title="圆柱体高度配置" open={isModalPolygonOpen} onOk={createExtrudedPolygon} onCancel={handlePolygonCancel}>
+        <Space>
+          <p>圆柱体高度</p>
+          <Input
+            name="excavate_hight"
+            value={polygonHight}
+            onChange={handlePolygonHightChange}
           />  
         </Space>
       </Modal>
@@ -1986,6 +2286,26 @@ function prismToGeoJSON(entity, heightOffset = 100) {
             onChange={handleImportDataChange}
           />
         </Form.Item>
+
+        {importDatacoordinates.dataType === "photo" && (
+        <>
+          <Form.Item label="图片宽度">
+            <Input
+              name="width"
+              value={importDatacoordinates.width}
+              onChange={handleImportDataChange}
+            />
+          </Form.Item>
+
+          <Form.Item label="图片高度">
+            <Input
+              name="height"
+              value={importDatacoordinates.height}
+              onChange={handleImportDataChange}
+            />
+          </Form.Item>
+        </>
+      )}
     </Form>
     </Space>
       </Modal>
@@ -2000,12 +2320,43 @@ function prismToGeoJSON(entity, heightOffset = 100) {
         style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
       ></div>
       <div id="toolbar">多 源 数 据 融 合</div>
+      <div id="timebar">当前时间: {gtime}</div>
       <div id="lanlatlbar">经度: {glocal.longitude}, 纬度: {glocal.latitude}, 高度: {glocal.altitude}</div>
       <div id="camerabar">相机高度: {glocal.cameraAltitude}</div>
+
+        <div id="toolbar_hover">
+      <Popover placement="top" title={'分析量算'} content={measure_tool} trigger="click">
+      <Button icon={<ColumnWidthOutlined />}></Button>
+      </Popover>
+      <Popover placement="top" title={'标记建模'} content={markTool } trigger="click">
+          <Button icon={<AppstoreOutlined />}></Button>
+        </Popover>
+        <Popover placement="top" title={'高级功能'} content={highLevelTool} overlayStyle={{ minWidth: "300px" }} trigger="click">
+          <Button icon={<InboxOutlined />}></Button>
+        </Popover>
+      </div>
+
+
+      <div id="toolbar_left">
+      <Popover placement="right" title={'数据'} content={
+        <div style={{ width: '300px', height: '500px', overflowY: 'auto', border: '1px solid #ddd', padding: '8px' }}>
+          {dataload_tool}
+          </div>
+        } trigger="click">
+      <Button icon={<BlockOutlined />}></Button>
+      </Popover>
+      <Popover placement="right" title={'场景'} content={
+        <div style={{ width: '300px', height: '500px', overflowY: 'auto', border: '1px solid #ddd', padding: '8px' }}>{
+          sceneTool
+        }</div>} trigger="click">
+          <Button icon={<FlagOutlined />}></Button>
+        </Popover>
+      </div>
+
     </div>
     </div>
 
-      <div onClick={showDrawer}> <FloatButton shape="square" type="primary"style={{insetInlineEnd: 24,}}icon={<MenuUnfoldOutlined />}/></div>
+      {/* <div onClick={showDrawer}> <FloatButton shape="square" type="primary"style={{insetInlineEnd: 24,}}icon={<MenuUnfoldOutlined />}/></div> */}
       <Drawer
         title="工具箱"
         placement="left"
